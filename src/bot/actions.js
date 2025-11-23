@@ -3,15 +3,15 @@ const { config } = require('../config');
 
 /**
  * 1단계: 기안일자 필터 설정
- * - 붉은색 박스 (날짜 입력 필드) 클릭
+ * - 날짜 입력 필드(기안일자) 클릭
  * - 20250101 ~ 20251231 입력
- * - 엔터
+ * - 엔터로 확정
  */
 async function setApplicationDate(page) {
   try {
     logger.info('📅 기안일자 필터 설정 중...');
 
-    // 1) 날짜 input들 찾기
+    // 날짜 input들 기다렸다가 가져오기
     await page.waitForSelector('input.OBTDatePickerRebuild_inputYMD__PtxMy', { timeout: 5000 });
     const dateInputs = page.locator('input.OBTDatePickerRebuild_inputYMD__PtxMy');
     const count = await dateInputs.count();
@@ -22,7 +22,6 @@ async function setApplicationDate(page) {
       return false;
     }
 
-    // 2) 시작일 / 종료일 나누기
     const startInput = dateInputs.nth(0);
     const endInput   = count > 1 ? dateInputs.nth(1) : null;
 
@@ -31,7 +30,6 @@ async function setApplicationDate(page) {
     await startInput.click();
     await page.waitForTimeout(200);
 
-    // 기존 값 전체 선택 후 덮어쓰기 (Ctrl+A)
     await startInput.press('Control+A').catch(() => {});
     await startInput.fill('20250101');
     logger.info('✅ 시작일 입력: 20250101');
@@ -48,7 +46,7 @@ async function setApplicationDate(page) {
       await endInput.fill('20251231');
       logger.info('✅ 종료일 입력: 20251231');
     } else {
-      // 종료일이 같은 input에 같이 들어가는 구조라면 이 분기 사용
+      // 하나의 input에 범위를 넣는 구조라면 이 분기 사용
       await startInput.press('Control+A').catch(() => {});
       await startInput.fill('20250101 ~ 20251231');
       logger.info('✅ 기간 입력: 20250101 ~ 20251231');
@@ -56,9 +54,9 @@ async function setApplicationDate(page) {
 
     await page.waitForTimeout(300);
 
-    // 엔터로 확정
+    // 날짜 필터 확정용 엔터
     await page.keyboard.press('Enter');
-    logger.info('✅ 엔터 입력');
+    logger.info('✅ 기안일자 필터 엔터로 확정');
 
     await page.waitForTimeout(1000);
     logger.info('✅ 기안일자 필터 설정 완료');
@@ -70,207 +68,110 @@ async function setApplicationDate(page) {
   }
 }
 
-
 /**
- * 2단계: 결재상태 필터 설정
- * - 결재상태 창 열림
- * - "전체" 체크박스 클릭 (모두 해제)
- * - "결재완료" 체크박스 선택
- * - 확인 버튼 클릭
- */
-async function setApprovalStatus(page) {
-  try {
-    logger.info('✅ 결재상태 필터 설정 중...');
-
-    await page.waitForTimeout(800);
-
-    // "전체" 체크박스 찾기 및 클릭
-    logger.debug('"전체" 체크박스 찾기...');
-    const checkboxes = page.locator('input[type="checkbox"]');
-    const checkboxCount = await checkboxes.count();
-    
-    let allCheckboxClicked = false;
-    for (let i = 0; i < checkboxCount; i++) {
-      const label = await checkboxes.nth(i).locator('..').textContent().catch(() => '');
-      if (label.includes('전체')) {
-        const isChecked = await checkboxes.nth(i).isChecked();
-        if (isChecked) {
-          await checkboxes.nth(i).click();
-          logger.info('✅ "전체" 체크박스 클릭 (모두 해제)');
-          allCheckboxClicked = true;
-        }
-        break;
-      }
-    }
-
-    await page.waitForTimeout(300);
-
-    // "결재완료" 체크박스 찾기 및 클릭
-    logger.debug('"결재완료" 체크박스 찾기...');
-    let completeCheckboxClicked = false;
-    for (let i = 0; i < checkboxCount; i++) {
-      const label = await checkboxes.nth(i).locator('..').textContent().catch(() => '');
-      if (label.includes('결재완료')) {
-        const isChecked = await checkboxes.nth(i).isChecked();
-        if (!isChecked) {
-          await checkboxes.nth(i).click();
-          logger.info('✅ "결재완료" 체크박스 선택');
-          completeCheckboxClicked = true;
-        }
-        break;
-      }
-    }
-
-    await page.waitForTimeout(300);
-
-    // 확인 버튼 클릭
-    logger.debug('확인 버튼 클릭...');
-    const confirmButton = page.locator('button:has-text("확인")').first();
-    const confirmVisible = await confirmButton.isVisible().catch(() => false);
-    
-    if (confirmVisible) {
-      await confirmButton.click();
-      logger.info('✅ 확인 버튼 클릭');
-    }
-
-    await page.waitForTimeout(500);
-    logger.info('✅ 결재상태 필터 설정 완료');
-    return true;
-  } catch (error) {
-    logger.error('❌ ... 실패:', error.message);
-    logger.error('📍 상세 에러:', error);  // ← 상세 에러 출력
-    return false;  // ← false 반환해서 실제 실패 알리기
-  }
-}
-
-/**
- * 3단계: 기안부서, 기안자 필터 삭제
- * - 엔터 3번
- * - Delete 1번
- * - 엔터 1번
- * - Delete 1번
- * - 엔터 1번
+ * 2단계: 기안부서, 기안자 필터 삭제
+ * - (기안일자 입력 후 상태에서)
+ * - 엔터 4번 (탭 이동)
+ * - Delete 1번 + Enter 1번 (기안부서 삭제)
+ * - Delete 1번 + Enter 1번 (기안자 삭제)
  */
 async function clearFilters(page) {
   try {
-    logger.info('🗑️  기안부서, 기안자 필터 삭제 중...');
+    logger.info('🗑️  기안부서, 기안자 필터 삭제 시퀀스 시작...');
 
     await page.waitForTimeout(300);
 
-    // 엔터 3번
+    // 1) 엔터 4번 (다음 필터들 순차 이동)
+    logger.info('↩️ 엔터 4번 입력으로 필터 칸 이동...');
     await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    logger.info('✅ 엔터 3번 입력');
+    await page.waitForTimeout(150);
 
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+
+    await page.keyboard.press('Enter');
     await page.waitForTimeout(300);
 
-    // Delete 1번
+    // 2) 기안부서에 도달했다고 가정하고 Del + Enter
+    logger.info('🏢 기안부서 필터 삭제 (Delete → Enter)...');
     await page.keyboard.press('Delete');
-    logger.info('✅ Delete 1번 입력');
+    await page.waitForTimeout(200);
 
-    await page.waitForTimeout(300);
-
-    // 엔터 1번
     await page.keyboard.press('Enter');
-    logger.info('✅ 엔터 1번 입력');
-
     await page.waitForTimeout(300);
 
-    // Delete 1번
+    // 3) 기안자에 도달했다고 가정하고 Del + Enter
+    logger.info('👤 기안자 필터 삭제 (Delete → Enter)...');
     await page.keyboard.press('Delete');
-    logger.info('✅ Delete 1번 입력');
+    await page.waitForTimeout(200);
 
-    await page.waitForTimeout(300);
-
-    // 엔터 1번
     await page.keyboard.press('Enter');
-    logger.info('✅ 엔터 1번 입력');
-
     await page.waitForTimeout(500);
-    logger.info('✅ 필터 삭제 완료');
+
+    logger.info('✅ 기안부서/기안자 필터 삭제 완료');
     return true;
   } catch (error) {
-    logger.error('❌ ... 실패:', error.message);
-    logger.error('📍 상세 에러:', error);  // ← 상세 에러 출력
-    return false;  // ← false 반환해서 실제 실패 알리기
+    logger.error('❌ clearFilters 실패:', error.message);
+    logger.error('📍 상세 에러:', error);
+    return false;
   }
 }
 
 /**
- * 4단계: 전표발행여부 필터 설정
- * - 전표발행여부 창 열림
- * - "전체" 체크박스 클릭 (모두 해제)
- * - "전표(승인)" 체크박스 선택
- * - 확인 버튼 클릭
+ * 3단계: 전표발행여부 필터 설정
+ * - 전표발행여부 팝업/창이 떠 있다고 가정
+ * - "전체" 클릭 (모두 해제)
+ * - "전표(승인)" 클릭 (선택)
+ * - "확인" 버튼 클릭
  */
 async function setDocumentStatus(page) {
   try {
     logger.info('📄 전표발행여부 필터 설정 중...');
 
+    // 팝업이 뜰 시간 약간 대기
     await page.waitForTimeout(800);
 
-    // "전체" 체크박스 찾기 및 클릭
-    logger.debug('"전체" 체크박스 찾기...');
-    const checkboxes = page.locator('input[type="checkbox"]');
-    const checkboxCount = await checkboxes.count();
-    
-    let allCheckboxClicked = false;
-    for (let i = 0; i < checkboxCount; i++) {
-      const label = await checkboxes.nth(i).locator('..').textContent().catch(() => '');
-      if (label.includes('전체')) {
-        const isChecked = await checkboxes.nth(i).isChecked();
-        if (isChecked) {
-          await checkboxes.nth(i).click();
-          logger.info('✅ "전체" 체크박스 클릭 (모두 해제)');
-          allCheckboxClicked = true;
-        }
-        break;
-      }
-    }
+    // 1) "전체" 라벨 클릭 (모두 해제)
+    logger.debug('"전체" 라벨 찾는 중...');
+    const allLabel = page.locator('label', { hasText: '전체' }).first();
+    await allLabel.waitFor({ state: 'visible', timeout: 5000 });
+    await allLabel.click();
+    logger.info('✅ "전체" 클릭 (체크 해제)');
 
     await page.waitForTimeout(300);
 
-    // "전표(승인)" 체크박스 찾기 및 클릭
-    logger.debug('"전표(승인)" 체크박스 찾기...');
-    let approvalCheckboxClicked = false;
-    for (let i = 0; i < checkboxCount; i++) {
-      const label = await checkboxes.nth(i).locator('..').textContent().catch(() => '');
-      if (label.includes('전표') || label.includes('승인')) {
-        const isChecked = await checkboxes.nth(i).isChecked();
-        if (!isChecked) {
-          await checkboxes.nth(i).click();
-          logger.info('✅ "전표(승인)" 체크박스 선택');
-          approvalCheckboxClicked = true;
-        }
-        break;
-      }
-    }
+    // 2) "전표(승인)" 항목 클릭
+    logger.debug('"전표(승인)" 항목 찾는 중...');
+    const approvalItem = page.getByText('전표(승인)', { exact: true }).first();
+    await approvalItem.waitFor({ state: 'visible', timeout: 5000 });
+    await approvalItem.click();
+    logger.info('✅ "전표(승인)" 선택');
 
     await page.waitForTimeout(300);
 
-    // 확인 버튼 클릭
-    logger.debug('확인 버튼 클릭...');
-    const confirmButton = page.locator('button:has-text("확인")').first();
-    const confirmVisible = await confirmButton.isVisible().catch(() => false);
-    
-    if (confirmVisible) {
-      await confirmButton.click();
-      logger.info('✅ 확인 버튼 클릭');
-    }
+    // 3) "확인" 버튼 클릭
+    logger.debug('"확인" 버튼 찾는 중...');
+    const confirmButton = page.locator('button.OBTMultiDropDownList_bottomButton__1xAmc').first();
+    await confirmButton.waitFor({ state: 'visible', timeout: 5000 });
+    await confirmButton.click();
+    logger.info('✅ "확인" 버튼 클릭');
 
     await page.waitForTimeout(500);
     logger.info('✅ 전표발행여부 필터 설정 완료');
     return true;
   } catch (error) {
-    logger.error('❌ ... 실패:', error.message);
-    logger.error('📍 상세 에러:', error);  // ← 상세 에러 출력
-    return false;  // ← false 반환해서 실제 실패 알리기
+    logger.error('❌ setDocumentStatus 실패:', error.message);
+    logger.error('📍 상세 에러:', error);
+    return false;
   }
 }
 
+
 /**
- * 5단계: 데이터 조회
+ * 4단계: 데이터 조회
  * - F10 키 누르기
  */
 async function searchData(page) {
@@ -298,16 +199,61 @@ async function searchData(page) {
     logger.info('✅ 데이터 조회 완료');
     return true;
   } catch (error) {
-    logger.error('❌ ... 실패:', error.message);
-    logger.error('📍 상세 에러:', error);  // ← 상세 에러 출력
-    return false;  // ← false 반환해서 실제 실패 알리기
+    logger.error('❌ searchData 실패:', error.message);
+    logger.error('📍 상세 에러:', error);
+    return false;
   }
 }
 
+/**
+ * 5단계: 그리드 우클릭 → 엑셀변환하기 → 파일 다운로드
+ */
+async function downloadExcel(page) {
+  try {
+    logger.info('📥 엑셀 다운로드 시도 중...');
+
+    // 1) 그리드 안의 아무 셀 하나 잡기
+    // 예시로, 첫 번째 행의 "회계단위" 텍스트 기준으로 셀을 잡아봄
+    // (너네 화면 텍스트에 맞게 아래 텍스트는 필요하면 바꿔도 됨)
+    const gridCell = page.getByText('라포랩스', { exact: false }).first();
+
+    await gridCell.waitFor({ state: 'visible', timeout: 5000 });
+
+    // 2) 해당 셀에서 우클릭 (컨텍스트 메뉴 열기)
+    logger.info('🖱️ 그리드 셀 우클릭 (컨텍스트 메뉴 열기)...');
+    await gridCell.click({ button: 'right' });
+    await page.waitForTimeout(300);
+
+    // 3) 엑셀변환하기 클릭 + 다운로드 이벤트 기다리기
+    logger.info('📄 "엑셀변환하기" 메뉴 클릭...');
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByText('엑셀변환하기', { exact: true }).click()
+    ]);
+
+    // 4) 다운로드 파일 저장 위치 설정 (원하면 config로 빼도 됨)
+    const suggestedName = download.suggestedFilename();
+    const downloadDir = config.downloadDir || path.join(__dirname, '..', 'downloads');
+    const savePath = path.join(downloadDir, suggestedName);
+
+    await download.saveAs(savePath);
+    logger.info(`✅ 엑셀 파일 다운로드 완료: ${savePath}`);
+
+    return true;
+  } catch (error) {
+    logger.error('❌ downloadExcel 실패:', error.message);
+    logger.error('📍 상세 에러:', error);
+    return false;
+  }
+}
+
+
+
 module.exports = {
   setApplicationDate,
-  setApprovalStatus,
   clearFilters,
   setDocumentStatus,
   searchData,
+  downloadExcel,
 };

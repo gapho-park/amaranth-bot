@@ -10,7 +10,8 @@ const {
   setApprovalStatus,
   clearFilters,
   setDocumentStatus,
-  searchData
+  searchData,
+  downloadExcel,   // ← 콤마 포함, 정상 추가
 } = require('./bot/actions');
 
 async function main() {
@@ -55,26 +56,26 @@ async function main() {
     logger.info('\n========== 단계 1: 로그인 ==========');
     await login(page);
 
-    // 2️⃣ 지출결의현황 메뉴 이동 (통합검색 사용)
+    // 2️⃣ 지출결의현황 메뉴 이동
     logger.info('\n========== 단계 2: 지출결의현황 이동 ==========');
     await goToAccounting(page);
 
     logger.info('\n✅ 지출결의현황 페이지 도달 완료!');
     logger.info('다음 단계:');
     logger.info('  - 기안일자 필터 설정');
-    logger.info('  - 기안부서, 기안자 필터 삭제');
+    logger.info('  - 기안부서/기안자 필터 삭제');
     logger.info('  - 전표발행여부 설정');
-    logger.info('  - 데이터 조회 및 다운로드');
+    logger.info('  - 조회 후 엑셀 다운로드');
 
-     // 3️⃣ 기안일자 필터 설정
+    // 3️⃣ 기안일자 필터 설정
     logger.info('\n========== 단계 3: 기안일자 필터 설정 ==========');
     await setApplicationDate(page);
 
-    // 4️⃣ 결재상태 필터 설정
+    // 4️⃣ 결재상태는 기본값이므로 스킵
     logger.info('\n========== 단계 4: 결재상태 필터 설정 ==========');
-    await setApprovalStatus(page);
+    logger.info('✅ 기본값(결재완료)이므로 스킵합니다.');
 
-    // 5️⃣ 기안부서, 기안자 필터 삭제
+    // 5️⃣ 기안부서/기안자 필터 삭제
     logger.info('\n========== 단계 5: 기안부서, 기안자 필터 삭제 ==========');
     await clearFilters(page);
 
@@ -82,19 +83,26 @@ async function main() {
     logger.info('\n========== 단계 6: 전표발행여부 설정 ==========');
     await setDocumentStatus(page);
 
-    // 7️⃣ 데이터 조회
+    // 7️⃣ 데이터 조회 (F10)
     logger.info('\n========== 단계 7: 데이터 조회 ==========');
     await searchData(page);
 
-    logger.info('\n✨ 모든 필터 설정 및 데이터 조회 완료!');
+    logger.info('\n✨ 필터 설정 및 조회 완료! 이제 엑셀 다운로드 진행');
 
-    // 개발 중 브라우저 유지 (headless가 false일 때)
+    // 8️⃣ 엑셀 다운로드
+    logger.info('\n========== 단계 8: 엑셀 다운로드 ==========');
+    await downloadExcel(page);
+
+    logger.info('\n🎉 전체 프로세스 완료!');
+
+    // 개발 모드 브라우저 유지
     if (!config.bot.headless) {
       logger.info('\n💡 개발 모드 - 브라우저 유지 중... (Ctrl+C로 종료)');
       await page.pause();
     }
 
     await context.close();
+
   } catch (error) {
     logger.error('❌ 오류 발생:', error);
     process.exit(1);
@@ -106,7 +114,6 @@ async function main() {
   }
 }
 
-// 실행
 if (require.main === module) {
   main();
 }
