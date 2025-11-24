@@ -13,12 +13,16 @@ async def go_to_accounting(page: Page) -> bool:
         
         # Wait for page to be fully loaded (networkidle is safer for SPAs)
         try:
-            await page.wait_for_load_state('networkidle', timeout=5000)
+            await page.wait_for_load_state('networkidle', timeout=10000)
         except Exception:
             logger.warning('⚠️ Network idle timeout (continuing)')
             
-        # explicit wait for stability on real server
-        await page.wait_for_timeout(2000)
+        # Longer wait for headless environment stability
+        await page.wait_for_timeout(5000)
+        
+        # Debug: Log current URL and title
+        logger.debug(f'Current URL: {page.url}')
+        logger.debug(f'Page title: {await page.title()}')
 
         
         search_input = None
