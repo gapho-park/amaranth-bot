@@ -34,8 +34,23 @@ jobs:
         echo "BOT_HEADLESS=true" >> .env
 
     - name: Create service_account.json
+      env:
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
       run: |
-        echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > service_account.json
+        python -c "
+        import os
+        
+        secret = os.environ.get('GOOGLE_CREDENTIALS_JSON', '')
+        print(f'DEBUG: Secret length: {len(secret)}')
+        
+        if not secret:
+            print('ERROR: GOOGLE_CREDENTIALS_JSON is empty!')
+            exit(1)
+            
+        with open('service_account.json', 'w', encoding='utf-8') as f:
+            f.write(secret)
+        print('✅ service_account.json created successfully')
+        "
 
     - name: Run Bot
       run: python main.py
