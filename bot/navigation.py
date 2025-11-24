@@ -18,7 +18,7 @@ async def go_to_accounting(page: Page) -> bool:
             logger.warning('⚠️ Network idle timeout (continuing)')
             
         # explicit wait for stability on real server
-        await page.wait_for_timeout(5000)
+        # await page.wait_for_timeout(5000)
 
         
         search_input = None
@@ -27,11 +27,14 @@ async def go_to_accounting(page: Page) -> bool:
         # Method 1: Find by placeholder attribute
         try:
             logger.debug('Method 1: input[placeholder*="통합검색"] attempting...')
+            
+            # Wait for element to be visible (up to 15s) - More robust than fixed sleep
+            await page.wait_for_selector('input[placeholder*="통합검색"]', state='visible', timeout=15000)
+            
             search_input = page.locator('input[placeholder*="통합검색"]').first
-            if await search_input.is_visible():
-                await search_input.click()
-                logger.info('✅ Integrated search bar clicked (Method 1: placeholder)')
-                click_success = True
+            await search_input.click()
+            logger.info('✅ Integrated search bar clicked (Method 1: placeholder)')
+            click_success = True
         except Exception as e:
             logger.warning(f'⚠️ Method 1 failed: {str(e)}')
 
