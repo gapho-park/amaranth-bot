@@ -21,22 +21,21 @@ async def go_to_accounting(page: Page) -> bool:
         search_input = None
         click_success = False
 
-        # Method 1: Find by placeholder attribute (using get_by_placeholder for Shadow DOM support)
+        # Method 1: Find by placeholder attribute (using locator with :visible to ignore hidden inputs)
         try:
-            logger.debug('Method 1: get_by_placeholder("통합검색") attempting...')
+            logger.debug('Method 1: locator("input[placeholder*=\'통합검색\']:visible") attempting...')
             
-            # Wait for element to be visible (up to 15s)
-            # get_by_placeholder automatically handles Shadow DOM
-            # Use regex to match "통합검색" or "Menu Search" or similar
-            search_input_locator = page.get_by_placeholder(re.compile('통합검색|검색'))
+            # Use :visible pseudo-class to ignore hidden inputs
+            # get_by_placeholder finds hidden elements too, so we use locator with CSS selector
+            search_input_locator = page.locator('input[placeholder*="통합검색"]:visible, input[placeholder*="검색"]:visible')
             
-            # Since get_by_placeholder might return multiple, we take the first one that becomes visible
+            # Wait for at least one visible element
             await search_input_locator.first.wait_for(state='visible', timeout=15000)
             
             if await search_input_locator.first.is_visible():
                 await search_input_locator.first.click()
                 search_input = search_input_locator.first
-                logger.info('✅ Integrated search bar clicked (Method 1: get_by_placeholder)')
+                logger.info('✅ Integrated search bar clicked (Method 1: visible locator)')
                 click_success = True
         except Exception as e:
             logger.warning(f'⚠️ Method 1 failed: {str(e)}')
