@@ -41,8 +41,11 @@ async def main():
             )
             logger.info('✅ Browser started')
 
-            # Create Context (Enable Downloads)
-            context = await browser.new_context(accept_downloads=True)
+            # Create Context (Enable Downloads, Set Viewport)
+            context = await browser.new_context(
+                accept_downloads=True,
+                viewport={'width': 1920, 'height': 1080}
+            )
             logger.info('✅ Browser context created')
 
             # Create Page

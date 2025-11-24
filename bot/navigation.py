@@ -18,7 +18,7 @@ async def go_to_accounting(page: Page) -> bool:
             logger.warning('⚠️ Network idle timeout (continuing)')
             
         # explicit wait for stability on real server
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(5000)
 
         
         search_input = None
