@@ -39,7 +39,7 @@ jobs:
       
       - name: Create service_account.json
         run: |
-          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
+          echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}" | base64 -d > service_account.json
       
       - name: Run bot
         run: python main.py
