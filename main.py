@@ -61,7 +61,7 @@ async def main():
             tasks = [
                 {
                     'company_name': '주식회사 라포랩스', 
-                    'target_tab': Config.GOOGLE_SHEET_TAB, 
+                    'target_tab': 'A10 지출결의_RPLS', 
                     'needs_switch': False # Assumes default login is Rapport Labs
                 },
                 {
