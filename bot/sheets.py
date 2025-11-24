@@ -4,9 +4,13 @@ import os
 from config import Config
 from logger import logger
 
-def upload_excel_to_sheet(excel_path: str) -> bool:
+def upload_excel_to_sheet(excel_path: str, tab_name: str = None) -> bool:
     """
     Uploads the content of an Excel file to a Google Sheet.
+    
+    Args:
+        excel_path (str): Path to the Excel file.
+        tab_name (str, optional): Name of the sheet tab to upload to. Defaults to Config.GOOGLE_SHEET_TAB.
     """
     try:
         logger.info('📊 Starting Google Sheets Upload...')
@@ -23,27 +27,7 @@ def upload_excel_to_sheet(excel_path: str) -> bool:
             logger.warning(f'⚠️ Google Credentials file not found at: {Config.GOOGLE_CREDENTIALS_PATH}. Skipping upload.')
             return False
 
-        # 1. Authenticate
-        logger.debug('Authenticating with Google...')
-        try:
-            gc = gspread.service_account(filename=Config.GOOGLE_CREDENTIALS_PATH)
-        except Exception as auth_error:
-            logger.error(f'❌ Google Authentication Failed: {str(auth_error)}')
-            return False
-
-        # 2. Open Sheet
-        logger.debug(f'Opening Sheet: {Config.GOOGLE_SHEET_URL}')
-        try:
-            sh = gc.open_by_url(Config.GOOGLE_SHEET_URL)
-            worksheet = sh.worksheet(Config.GOOGLE_SHEET_TAB)
-        except gspread.exceptions.WorksheetNotFound:
-            logger.warning(f'⚠️ Worksheet "{Config.GOOGLE_SHEET_TAB}" not found. Creating it...')
-            worksheet = sh.add_worksheet(title=Config.GOOGLE_SHEET_TAB, rows=100, cols=20)
-        except Exception as open_error:
-            logger.error(f'❌ Failed to open sheet: {str(open_error)}')
-            return False
-
-        # 3. Read Excel
+        # 1. Read Excel
         logger.debug(f'Reading Excel file: {excel_path}')
         df = None
         try:
@@ -75,7 +59,26 @@ def upload_excel_to_sheet(excel_path: str) -> bool:
             logger.error(f'❌ Failed to read Excel file: {str(read_error)}')
             return False
 
-        # 4. Update Sheet
+        # 2. Authenticate and Open Sheet
+        logger.debug('Authenticating with Google...')
+        try:
+            gc = gspread.service_account(filename=Config.GOOGLE_CREDENTIALS_PATH)
+            sh = gc.open_by_url(Config.GOOGLE_SHEET_URL)
+            
+            target_tab = tab_name if tab_name else Config.GOOGLE_SHEET_TAB
+            logger.info(f'📑 Selecting Worksheet: {target_tab}')
+            
+            try:
+                worksheet = sh.worksheet(target_tab)
+            except gspread.WorksheetNotFound:
+                logger.warning(f'⚠️ Worksheet "{target_tab}" not found. Creating it...')
+                worksheet = sh.add_worksheet(title=target_tab, rows=1000, cols=26)
+                
+        except Exception as auth_error:
+            logger.error(f'❌ Google Authentication/Sheet Open Failed: {str(auth_error)}')
+            return False
+
+        # 3. Update Sheet
         logger.info(f'📤 Uploading {len(df)} rows to Google Sheets...')
         
         # Clear existing content

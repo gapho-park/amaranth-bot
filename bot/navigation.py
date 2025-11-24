@@ -11,6 +11,16 @@ async def go_to_accounting(page: Page) -> bool:
         # Step 1: Find and Click Integrated Search Bar
         logger.debug('Finding integrated search bar...')
         
+        # Wait for page to be fully loaded (networkidle is safer for SPAs)
+        try:
+            await page.wait_for_load_state('networkidle', timeout=5000)
+        except Exception:
+            logger.warning('⚠️ Network idle timeout (continuing)')
+            
+        # explicit wait for stability on real server
+        await page.wait_for_timeout(2000)
+
+        
         search_input = None
         click_success = False
 
@@ -74,8 +84,8 @@ async def go_to_accounting(page: Page) -> bool:
         # Clear existing text
         await search_input.evaluate('el => el.value = ""')
         
-        # Type search term
-        await search_input.type('지출결의현황', delay=100)
+        # Type search term (faster typing with 30ms delay)
+        await search_input.type('지출결의현황', delay=30)
         logger.info('✅ "지출결의현황" entered')
 
         # Wait for search results load
@@ -177,3 +187,118 @@ async def go_to_accounting(page: Page) -> bool:
             logger.warning('Failed to save screenshot')
 
         raise error
+
+async def switch_company(page: Page, target_company_name: str):
+    """
+    Switches the active company.
+    """
+    try:
+        logger.info(f'🏢 Switching company to: {target_company_name}')
+
+        # 1. Click the top profile/company button to open the menu/popup
+        # The button usually contains the user name or current company name.
+        # Based on screenshot: "박갑호" is visible.
+        logger.debug('Finding company switch button...')
+        
+        # Try finding by User Name "박갑호" or generic profile icon
+        # We use .first because it might appear in multiple places, but top right is usually first or last depending on DOM.
+        # Let's try a generic approach: finding the header area.
+        
+        # Strategy 1: Text "박갑호"
+        trigger = page.locator('text="박갑호"').first
+        if not await trigger.is_visible():
+             # Strategy 2: Text "Finance"
+             trigger = page.locator('text="Finance"').first
+        
+        if await trigger.is_visible():
+            await trigger.click()
+            logger.info('✅ Company/Profile menu clicked')
+        else:
+            raise Exception('Could not find Company/Profile button (looked for "박갑호" or "Finance")')
+
+        # 2. Wait for the popup/dropdown
+        # User said: "Popup appears, select Rapport Studio at bottom"
+        await page.wait_for_timeout(1000)
+        
+        # 3. Select the target company
+        logger.debug(f'Finding target company: {target_company_name}')
+        
+        # User reported we need to click the radio button (circle) to the left of the company name.
+        # The radio button is an SVG element with a circle inside.
+        # Strategy: Find the row (tr) that contains the company name, then click the SVG in the first cell.
+        
+        # Try finding the row
+        target_row = page.locator(f'tr:has-text("{target_company_name}")').first
+        
+        if await target_row.is_visible():
+            logger.debug(f'Found row for {target_company_name}')
+            
+            # Strategy 1: Try to find and click the SVG element (the actual radio button)
+            try:
+                svg_radio = target_row.locator('svg').first
+                await svg_radio.click()
+                logger.info(f'✅ Target company radio button clicked (SVG) for "{target_company_name}"')
+            except Exception as e1:
+                logger.debug(f'SVG click failed: {str(e1)}')
+                
+                # Strategy 2: Click the first cell which contains the SVG
+                try:
+                    first_cell = target_row.locator('td').first
+                    await first_cell.click()
+                    logger.info(f'✅ Target company radio button clicked (first cell) for "{target_company_name}"')
+                except Exception as e2:
+                    logger.debug(f'First cell click failed: {str(e2)}')
+                    
+                    # Strategy 3: Try force clicking input[type="radio"] if it exists
+                    try:
+                        radio_input = target_row.locator('input[type="radio"]').first
+                        await radio_input.click(force=True)
+                        logger.info(f'✅ Target company radio button clicked (input force) for "{target_company_name}"')
+                    except Exception as e3:
+                        logger.warning(f'All radio click strategies failed. Last error: {str(e3)}')
+                        raise Exception(f'Could not click radio button for "{target_company_name}"')
+        else:
+            raise Exception(f'Could not find row for target company "{target_company_name}"')
+            
+        await page.wait_for_timeout(500)
+
+        # 4. Click Confirm "확인" (First one - company selection popup)
+        logger.debug('Clicking Confirm (1st - company selection)...')
+        first_confirm_btn = page.get_by_role("button", name="확인").last
+        if await first_confirm_btn.is_visible():
+            await first_confirm_btn.click()
+            logger.info('✅ Confirm button (1st - company selection) clicked')
+
+            # 5. Handle "Tabs will be closed" popup if it appears
+            logger.debug('Waiting for potential second popup (Tabs closed warning)...')
+
+            try:
+                await page.wait_for_timeout(1500)
+                await page.wait_for_selector('text=열려 있는 탭이 모두 닫힙니다', state='visible', timeout=3000)
+                logger.info('⚠️ "Tabs will be closed" popup detected.')
+
+                popup = page.get_by_role("dialog").filter(
+                    has_text="열려 있는 탭이 모두 닫힙니다"
+                ).first
+                if not await popup.is_visible():
+                    popup = page.locator('div:has-text("열려 있는 탭이 모두 닫힙니다")').first
+
+                confirm_btn_in_popup = popup.get_by_role("button", name="확인").first
+                await confirm_btn_in_popup.click()
+                logger.info('✅ Second Confirm button clicked (inside popup dialog)')
+
+            except Exception as e:
+                logger.debug(f'ℹ️ No second popup appeared or failed to handle: {str(e)}')
+        else:
+            logger.warning('⚠️ First confirm button not found. Checking if switch happened automatically...')
+
+        # 6. Wait for reload/switch
+        logger.info('⏳ Waiting for company switch...')
+        await page.wait_for_load_state('networkidle', timeout=10000)
+        await page.wait_for_timeout(3000) # Extra wait for safety
+        
+        return True
+
+    except Exception as e:
+        logger.error(f'❌ Failed to switch company: {str(e)}')
+        raise e

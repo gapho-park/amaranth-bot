@@ -1,10 +1,11 @@
 import asyncio
 import os
+import glob
 from playwright.async_api import async_playwright
 from config import Config, validate_config
 from logger import logger
 from bot.login import login
-from bot.navigation import go_to_accounting
+from bot.navigation import go_to_accounting, switch_company
 from bot.actions import (
     set_application_date,
     clear_filters,
@@ -13,7 +14,6 @@ from bot.actions import (
     download_excel
 )
 from bot.sheets import upload_excel_to_sheet
-import glob
 
 async def main():
     browser = None
@@ -51,72 +51,76 @@ async def main():
 
             # 1️⃣ Login
             logger.info('\n========== Step 1: Login ==========')
-            await login(page)
+            if not await login(page):
+                return
 
-            # 2️⃣ Go to Accounting Menu
-            logger.info('\n========== Step 2: Navigate to Accounting ==========')
-            await go_to_accounting(page)
+            # Define tasks for multi-company support
+            tasks = [
+                {
+                    'company_name': '주식회사 라포랩스', 
+                    'target_tab': Config.GOOGLE_SHEET_TAB, 
+                    'needs_switch': False # Assumes default login is Rapport Labs
+                },
+                {
+                    'company_name': '주식회사 라포스튜디오', 
+                    'target_tab': 'A10 지출결의_RPST', 
+                    'needs_switch': True
+                }
+            ]
 
-            logger.info('\n✅ Reached Expenditure Resolution Status Page!')
-            logger.info('Next Steps:')
-            logger.info('  - Set Application Date Filter')
-            logger.info('  - Clear Department/Drafter Filters')
-            logger.info('  - Set Document Status')
-            logger.info('  - Search and Download Excel')
+            for i, task in enumerate(tasks):
+                logger.info(f'\n🚀 Starting Task {i+1}: {task["company_name"]}')
+                
+                # Switch Company if needed
+                if task['needs_switch']:
+                    logger.info(f'\n========== Switching Company: {task["company_name"]} ==========')
+                    await switch_company(page, task['company_name'])
 
-            # 3️⃣ Set Application Date
-            logger.info('\n========== Step 3: Set Application Date ==========')
-            await set_application_date(page)
+                # 2️⃣ Navigation
+                logger.info(f'\n========== Step {i+1}-2: Navigate to Expenditure Resolution ==========')
+                await go_to_accounting(page)
 
-            # 4️⃣ Document Status (Skip if default, but we implement it as per JS logic)
-            # JS logic said "Step 4: Approval Status is default so skip", but then called setDocumentStatus in Step 6.
-            # We will follow the JS execution flow:
-            # JS Flow:
-            # 1. Login
-            # 2. Navigation
-            # 3. Set Application Date
-            # 4. (Log says skip approval status)
-            # 5. Clear Filters
-            # 6. Set Document Status
-            # 7. Search
-            # 8. Download
+                logger.info(f'\n✅ Reached Expenditure Resolution Status Page ({task["company_name"]})!')
 
-            # 5️⃣ Clear Filters
-            logger.info('\n========== Step 5: Clear Filters ==========')
-            await clear_filters(page)
+                # 3️⃣ Set Application Date
+                logger.info(f'\n========== Step {i+1}-3: Set Application Date ==========')
+                await set_application_date(page)
 
-            # 6️⃣ Set Document Status
-            logger.info('\n========== Step 6: Set Document Status ==========')
-            await set_document_status(page)
+                # 4️⃣ Clear Filters
+                logger.info(f'\n========== Step {i+1}-4: Clear Filters ==========')
+                await clear_filters(page)
 
-            # 7️⃣ Search Data (Skipped as per user request)
-            logger.info('\n========== Step 7: Search Data (Skipped) ==========')
-            # await search_data(page)
+                # 5️⃣ Set Document Status
+                logger.info(f'\n========== Step {i+1}-5: Set Document Status ==========')
+                await set_document_status(page)
 
-            logger.info('\n✨ Filters set and Search completed! Proceeding to Download...')
+                logger.info('\n✨ Filters set! Proceeding to Download...')
 
-            # 8️⃣ Download Excel
-            logger.info('\n========== Step 8: Download Excel ==========')
-            if await download_excel(page):
-                # Find the latest file in download directory
-                list_of_files = glob.glob(os.path.join(Config.DOWNLOAD_PATH, '*'))
-                if list_of_files:
-                    latest_file = max(list_of_files, key=os.path.getctime)
-                    logger.info(f'📂 Latest file found: {latest_file}')
+                # 6️⃣ Download Excel
+                logger.info(f'\n========== Step {i+1}-6: Download Excel ==========')
+                if await download_excel(page):
+                    # Find the latest file in download directory
+                    # Wait slightly for file system
+                    await asyncio.sleep(2)
                     
-                    # 9️⃣ Upload to Google Sheets
-                    logger.info('\n========== Step 9: Upload to Google Sheets ==========')
-                    upload_excel_to_sheet(latest_file)
-                else:
-                    logger.warning('⚠️ No files found in download directory.')
+                    list_of_files = glob.glob(os.path.join(Config.DOWNLOAD_PATH, '*'))
+                    if list_of_files:
+                        latest_file = max(list_of_files, key=os.path.getctime)
+                        logger.info(f'📂 Latest file found: {latest_file}')
+                        
+                        # 7️⃣ Upload to Google Sheets
+                        logger.info(f'\n========== Step {i+1}-7: Upload to Google Sheets ({task["target_tab"]}) ==========')
+                        upload_excel_to_sheet(latest_file, task['target_tab'])
+                    else:
+                        logger.warning('⚠️ No files found in download directory.')
+                
+                logger.info(f'✅ Task {i+1} Completed for {task["company_name"]}')
 
-            logger.info('\n🎉 All Processes Completed!')
+            logger.info('\n🎉 All Tasks Completed Successfully!')
 
             # Keep browser open in dev mode
             if not Config.BOT_HEADLESS:
                 logger.info('\n💡 Dev Mode - Browser staying open... (Press Ctrl+C to exit)')
-                # In Python async, we can just wait indefinitely or for a long time
-                # await page.pause() is also an option if using inspector, but simple wait is fine
                 await asyncio.sleep(3600) 
 
             await context.close()
@@ -125,8 +129,11 @@ async def main():
 
     except Exception as error:
         logger.error(f'❌ Error Occurred: {str(error)}')
-        # In a real script we might want to exit with code 1, but here we just log
-        # sys.exit(1)
+        
+        # Keep browser open on error for debugging
+        if browser and not Config.BOT_HEADLESS:
+            logger.warning('⚠️ Error occurred. Keeping browser open for debugging... (Press Ctrl+C to exit)')
+            await asyncio.sleep(3600)
 
 if __name__ == '__main__':
     asyncio.run(main())
