@@ -3,38 +3,41 @@ from logger import logger
 from config import Config
 import datetime
 import json
+import re
 
 async def go_to_accounting(page: Page) -> bool:
     try:
         logger.info('📍 Navigating to Expenditure Resolution Status...')
-
-        # Step 1: Find and Click Integrated Search Bar
-        logger.debug('Finding integrated search bar...')
         
-        # Wait for page to be fully loaded (networkidle is safer for SPAs)
-        try:
-            await page.wait_for_load_state('networkidle', timeout=5000)
-        except Exception:
-            logger.warning('⚠️ Network idle timeout (continuing)')
-            
+        # Log current page state
+        current_url = page.url
+        title = await page.title()
+        logger.debug(f'Current URL: {current_url}')
+        logger.debug(f'Page Title: {title}')
+
         # explicit wait for stability on real server
         # await page.wait_for_timeout(5000)
 
-        
         search_input = None
         click_success = False
 
-        # Method 1: Find by placeholder attribute
+        # Method 1: Find by placeholder attribute (using get_by_placeholder for Shadow DOM support)
         try:
-            logger.debug('Method 1: input[placeholder*="통합검색"] attempting...')
+            logger.debug('Method 1: get_by_placeholder("통합검색") attempting...')
             
-            # Wait for element to be visible (up to 15s) - More robust than fixed sleep
-            await page.wait_for_selector('input[placeholder*="통합검색"]', state='visible', timeout=15000)
+            # Wait for element to be visible (up to 15s)
+            # get_by_placeholder automatically handles Shadow DOM
+            # Use regex to match "통합검색" or "Menu Search" or similar
+            search_input_locator = page.get_by_placeholder(re.compile('통합검색|검색'))
             
-            search_input = page.locator('input[placeholder*="통합검색"]').first
-            await search_input.click()
-            logger.info('✅ Integrated search bar clicked (Method 1: placeholder)')
-            click_success = True
+            # Since get_by_placeholder might return multiple, we take the first one that becomes visible
+            await search_input_locator.first.wait_for(state='visible', timeout=15000)
+            
+            if await search_input_locator.first.is_visible():
+                await search_input_locator.first.click()
+                search_input = search_input_locator.first
+                logger.info('✅ Integrated search bar clicked (Method 1: get_by_placeholder)')
+                click_success = True
         except Exception as e:
             logger.warning(f'⚠️ Method 1 failed: {str(e)}')
 
@@ -42,9 +45,10 @@ async def go_to_accounting(page: Page) -> bool:
         if not click_success:
             try:
                 logger.debug('Method 2: [class*="search"] attempting...')
-                search_input = page.locator('input[class*="search"]').first
-                if await search_input.is_visible():
-                    await search_input.click()
+                search_input_locator = page.locator('input[class*="search"]').first
+                if await search_input_locator.is_visible():
+                    await search_input_locator.click()
+                    search_input = search_input_locator
                     logger.info('✅ Integrated search bar clicked (Method 2: class search)')
                     click_success = True
             except Exception as e:
@@ -54,17 +58,13 @@ async def go_to_accounting(page: Page) -> bool:
         if not click_success:
             try:
                 logger.debug('Method 3: Iterating all input elements...')
-                inputs = page.locator('input')
-                count = await inputs.count()
-                logger.debug(f'📊 Found {count} input elements')
+                inputs = await page.locator('input').all()
+                logger.debug(f'📊 Found {len(inputs)} input elements')
 
-                for i in range(count):
-                    el = inputs.nth(i)
+                for i, el in enumerate(inputs):
                     placeholder = await el.get_attribute('placeholder') or ''
                     
-                    # logger.debug(f'  [{i}] placeholder="{placeholder}"')
-
-                    if placeholder and ('통합' in placeholder or '검색' in placeholder):
+                    if '통합' in placeholder or '검색' in placeholder:
                         if await el.is_visible():
                             await el.click()
                             search_input = el
@@ -75,12 +75,23 @@ async def go_to_accounting(page: Page) -> bool:
                 logger.warning(f'⚠️ Method 3 failed: {str(e)}')
 
         if not click_success:
+            # Save HTML dump for debugging
+            try:
+                html_content = await page.content()
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+                dump_path = f'./screenshots/error_dump_{timestamp}.html'
+                with open(dump_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                logger.info(f'📄 Error HTML dump saved: {dump_path}')
+            except Exception as dump_error:
+                logger.warning(f'Failed to save HTML dump: {dump_error}')
+                
             raise Exception('Could not find integrated search bar. Please check page structure.')
 
-        # Step 2: Enter '지출결의현황'
-        logger.debug('Entering search term...')
+        # Step 2: Type '지출결의현황'
+        logger.debug('Typing search term...')
         
-        # Check focus
+        # Ensure focus
         await search_input.focus()
         await page.wait_for_timeout(300)
         
@@ -182,7 +193,7 @@ async def go_to_accounting(page: Page) -> bool:
         
         # Save screenshot on error
         try:
-            timestamp = datetime.datetime.now().isoformat().replace(':', '-').replace('.', '-')
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             screenshot_path = f'./screenshots/navigation_error_{timestamp}.png'
             await page.screenshot(path=screenshot_path)
             logger.info(f'📸 Error screenshot saved: {screenshot_path}')
@@ -199,14 +210,6 @@ async def switch_company(page: Page, target_company_name: str):
         logger.info(f'🏢 Switching company to: {target_company_name}')
 
         # 1. Click the top profile/company button to open the menu/popup
-        # The button usually contains the user name or current company name.
-        # Based on screenshot: "박갑호" is visible.
-        logger.debug('Finding company switch button...')
-        
-        # Try finding by User Name "박갑호" or generic profile icon
-        # We use .first because it might appear in multiple places, but top right is usually first or last depending on DOM.
-        # Let's try a generic approach: finding the header area.
-        
         # Strategy 1: Text "박갑호"
         trigger = page.locator('text="박갑호"').first
         if not await trigger.is_visible():
@@ -220,15 +223,10 @@ async def switch_company(page: Page, target_company_name: str):
             raise Exception('Could not find Company/Profile button (looked for "박갑호" or "Finance")')
 
         # 2. Wait for the popup/dropdown
-        # User said: "Popup appears, select Rapport Studio at bottom"
         await page.wait_for_timeout(1000)
         
         # 3. Select the target company
         logger.debug(f'Finding target company: {target_company_name}')
-        
-        # User reported we need to click the radio button (circle) to the left of the company name.
-        # The radio button is an SVG element with a circle inside.
-        # Strategy: Find the row (tr) that contains the company name, then click the SVG in the first cell.
         
         # Try finding the row
         target_row = page.locator(f'tr:has-text("{target_company_name}")').first
@@ -277,30 +275,21 @@ async def switch_company(page: Page, target_company_name: str):
 
             try:
                 await page.wait_for_timeout(1500)
-                await page.wait_for_selector('text=열려 있는 탭이 모두 닫힙니다', state='visible', timeout=3000)
-                logger.info('⚠️ "Tabs will be closed" popup detected.')
-
-                popup = page.get_by_role("dialog").filter(
-                    has_text="열려 있는 탭이 모두 닫힙니다"
-                ).first
-                if not await popup.is_visible():
-                    popup = page.locator('div:has-text("열려 있는 탭이 모두 닫힙니다")').first
-
-                confirm_btn_in_popup = popup.get_by_role("button", name="확인").first
-                await confirm_btn_in_popup.click()
-                logger.info('✅ Second Confirm button clicked (inside popup dialog)')
-
+                # Check for the warning text
+                warning_text = page.locator('text=열려 있는 탭이 모두 닫힙니다')
+                if await warning_text.is_visible():
+                    logger.info('⚠️ "Tabs will be closed" popup detected.')
+                    
+                    # Click the confirm button in this specific dialog
+                    # Usually it's the last "확인" button or inside a specific container
+                    confirm_btn = page.get_by_role("button", name="확인").last
+                    if await confirm_btn.is_visible():
+                        await confirm_btn.click()
+                        logger.info('✅ Confirm button (2nd - warning popup) clicked')
             except Exception as e:
-                logger.debug(f'ℹ️ No second popup appeared or failed to handle: {str(e)}')
+                logger.warning(f'⚠️ Error handling second popup: {str(e)}')
         else:
-            logger.warning('⚠️ First confirm button not found. Checking if switch happened automatically...')
-
-        # 6. Wait for reload/switch
-        logger.info('⏳ Waiting for company switch...')
-        await page.wait_for_load_state('networkidle', timeout=10000)
-        await page.wait_for_timeout(3000) # Extra wait for safety
-        
-        return True
+            logger.warning('⚠️ Could not find first Confirm button')
 
     except Exception as e:
         logger.error(f'❌ Failed to switch company: {str(e)}')
