@@ -2,8 +2,8 @@ name: Amaranth Bot Daily Schedule
 
 on:
   schedule:
-    # Run at 09:00 KST (00:00 UTC) every day
-    - cron: '0 0 * * *'
+    # Run every hour
+    - cron: '0 * * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
