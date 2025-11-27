@@ -1,4 +1,5 @@
 from playwright.async_api import Page
+from typing import Optional
 from logger import logger
 from config import Config
 import os
@@ -209,7 +210,7 @@ async def search_data(page: Page) -> bool:
         logger.error(f'❌ search_data failed: {str(error)}')
         return False
 
-async def download_excel(page: Page) -> str | None:
+async def download_excel(page: Page) -> Optional[str]:
     """
     Step 5: Right click grid → Convert to Excel → Download file
     Returns:
