@@ -77,43 +77,56 @@ async def set_application_date(page: Page) -> bool:
 
 async def clear_filters(page: Page) -> bool:
     """
-    Step 2: Clear Department and Drafter Filters
-    - (From Application Date input state)
-    - Enter 4 times (Tab move)
-    - Delete 1 time + Enter 1 time (Clear Department)
-    - Delete 1 time + Enter 1 time (Clear Drafter)
+    Step 2: Process Filters Sequence & Trigger Search
+    User Flow:
+    - (After Date Set)
+    - Enter (Pass Approval Status)
+    - Enter (Pass Doc Class)
+    - Enter (Pass Doc Title)
+    - Enter (Pass Doc Number)
+    - Delete -> Enter (Clear Department)
+    - Delete -> Enter (Clear Drafter)
+    - Enter (Pass Document Status -> Triggers Search)
     """
     try:
-        logger.info('🗑️  Starting Clear Filters Sequence...')
-
-        await page.wait_for_timeout(300)
-
-        # 1) Enter 4 times (Move to next filters)
-        logger.info('↩️ Pressing Enter 4 times to move...')
-        for _ in range(4):
-            await page.keyboard.press('Enter')
-            await page.wait_for_timeout(150)
+        logger.info('🎹 Processing Filter Sequence & Searching...')
         
         await page.wait_for_timeout(300)
 
-        # 2) Clear Department (Delete + Enter)
-        logger.info('🏢 Clearing Department Filter (Delete → Enter)...')
-        await page.keyboard.press('Delete')
-        await page.wait_for_timeout(200)
-        await page.keyboard.press('Enter')
-        await page.wait_for_timeout(300)
+        # 1. Approval Status -> Enter
+        # 2. Document Class -> Enter
+        # 3. Document Title -> Enter
+        # 4. Document Number -> Enter
+        logger.info('↩️  Passing 4 filters (Approval, Class, Title, Number)...')
+        for _ in range(4):
+            await page.keyboard.press('Enter')
+            await page.wait_for_timeout(150)
 
-        # 3) Clear Drafter (Delete + Enter)
-        logger.info('👤 Clearing Drafter Filter (Delete → Enter)...')
+        # 5. Department -> Delete, Enter
+        logger.info('🏢 Clearing Department (Delete → Enter)...')
         await page.keyboard.press('Delete')
-        await page.wait_for_timeout(200)
+        await page.wait_for_timeout(150)
         await page.keyboard.press('Enter')
-        await page.wait_for_timeout(500)
+        await page.wait_for_timeout(150)
 
-        logger.info('✅ Department/Drafter Filters cleared')
+        # 6. Drafter -> Delete, Enter
+        logger.info('👤 Clearing Drafter (Delete → Enter)...')
+        await page.keyboard.press('Delete')
+        await page.wait_for_timeout(150)
+        await page.keyboard.press('Enter')
+        await page.wait_for_timeout(150)
+
+        # 7. Document Status -> Enter (Triggers Search)
+        logger.info('🔍 Triggering Search (Enter on Document Status)...')
+        await page.keyboard.press('Enter')
+
+        # Wait for data load
+        logger.info('⏳ Waiting for data load...')
+        await page.wait_for_timeout(3000)
+        
         return True
     except Exception as error:
-        logger.error(f'❌ clear_filters failed: {str(error)}')
+        logger.error(f'❌ clear_filters sequence failed: {str(error)}')
         return False
 
 async def set_document_status(page: Page) -> bool:
@@ -196,9 +209,12 @@ async def search_data(page: Page) -> bool:
         logger.error(f'❌ search_data failed: {str(error)}')
         return False
 
-async def download_excel(page: Page) -> bool:
+async def download_excel(page: Page) -> str | None:
     """
     Step 5: Right click grid → Convert to Excel → Download file
+    Returns:
+        str: Path to the downloaded file if successful
+        None: If failed
     """
     try:
         logger.info('📥 Attempting Excel Download...')
@@ -285,7 +301,7 @@ async def download_excel(page: Page) -> bool:
         await download.save_as(save_path)
         logger.info(f'✅ Excel file downloaded: {save_path}')
 
-        return True
+        return save_path
     except Exception as error:
         logger.error(f'❌ download_excel failed: {str(error)}')
-        return False
+        return None
