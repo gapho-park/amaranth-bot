@@ -6,7 +6,6 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from dotenv import load_dotenv
 
 # 기존 봇 로직 임포트
-# main.py의 main 함수를 run_bot이라는 이름으로 가져옵니다.
 from main import main as run_bot
 
 # 환경변수 로드
@@ -50,15 +49,14 @@ async def handle_amaranth_command(ack, body, client):
         )
 
         # 4. 봇 로직 실행 (main.py의 main 함수)
-        # main()은 비동기 함수이므로 await로 기다립니다.
         logger.info("🤖 Running main bot logic...")
         await run_bot()
 
-        # 5. 완료 메시지 전송
+        # 5. 완료 메시지 전송 (수정됨: *작업 완료!*)
         await client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="✅ **작업 완료!** 구글 시트 업데이트가 끝났습니다."
+            text="✅ *작업 완료!* 구글 시트 업데이트가 끝났습니다."
         )
         
         # 원본 메시지에 완료 이모지 추가
@@ -98,4 +96,3 @@ async def start_server():
 if __name__ == "__main__":
     print("⚡️ Slack Bolt app is running in Socket Mode!")
     asyncio.run(start_server())
-
