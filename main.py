@@ -1,6 +1,5 @@
 import asyncio
 import os
-import glob
 from playwright.async_api import async_playwright
 from config import Config, validate_config
 from logger import logger
@@ -11,7 +10,8 @@ from bot.actions import (
     clear_filters,
     set_document_status,
     search_data,
-    download_excel
+    download_excel,
+    download_excel_popup  # Import new function
 )
 from bot.sheets import upload_excel_to_sheet
 
@@ -61,12 +61,12 @@ async def main():
             tasks = [
                 {
                     'company_name': '주식회사 라포랩스', 
-                    'target_tab': 'A10 지출결의_RPLS', 
+                    'target_tab': 'A10 RPLS', 
                     'needs_switch': False # Assumes default login is Rapport Labs
                 },
                 {
                     'company_name': '주식회사 라포스튜디오', 
-                    'target_tab': 'A10 지출결의_RPST', 
+                    'target_tab': 'A10 RPST', 
                     'needs_switch': True
                 }
             ]
@@ -89,33 +89,41 @@ async def main():
                 logger.info(f'\n========== Step {i+1}-3: Set Application Date ==========')
                 await set_application_date(page)
 
-                # 4️⃣ Clear Filters
-                logger.info(f'\n========== Step {i+1}-4: Clear Filters ==========')
+                # 4️⃣ Process Filters & Search (Integrated)
+                # Flows: Enter(4x) -> Del/Enter(Dept) -> Del/Enter(Drafter) -> Enter(Search)
+                logger.info(f'\n========== Step {i+1}-4: Process Filters & Search ==========')
                 await clear_filters(page)
 
-                # 5️⃣ Set Document Status
-                logger.info(f'\n========== Step {i+1}-5: Set Document Status ==========')
-                await set_document_status(page)
+                # (Skipped) 5️⃣ Set Document Status - handled in step 4 by Enter
+                # logger.info(f'\n========== Step {i+1}-5: Set Document Status ==========')
+                # await set_document_status(page)
 
-                logger.info('\n✨ Filters set! Proceeding to Download...')
+                logger.info('\n✨ Data loaded! Proceeding to Download...')
 
                 # 6️⃣ Download Excel
                 logger.info(f'\n========== Step {i+1}-6: Download Excel ==========')
-                if await download_excel(page):
-                    # Find the latest file in download directory
-                    # Wait slightly for file system
-                    await asyncio.sleep(2)
+                downloaded_file = await download_excel_popup(page) # Use new popup function
+                
+                if downloaded_file and os.path.exists(downloaded_file):
+                    logger.info(f'📂 Download successful: {downloaded_file}')
                     
-                    list_of_files = glob.glob(os.path.join(Config.DOWNLOAD_PATH, '*'))
-                    if list_of_files:
-                        latest_file = max(list_of_files, key=os.path.getctime)
-                        logger.info(f'📂 Latest file found: {latest_file}')
-                        
-                        # 7️⃣ Upload to Google Sheets
-                        logger.info(f'\n========== Step {i+1}-7: Upload to Google Sheets ({task["target_tab"]}) ==========')
-                        upload_excel_to_sheet(latest_file, task['target_tab'])
-                    else:
-                        logger.warning('⚠️ No files found in download directory.')
+                    # 7️⃣ Upload to Google Sheets (Async)
+                    logger.info(f'\n========== Step {i+1}-7: Upload to Google Sheets ({task["target_tab"]}) ==========')
+                    
+                    # Run heavy upload task in a separate thread to prevent blocking
+                    try:
+                        # Using a wrapper function to catch exceptions within the thread if needed,
+                        # but to_thread propagates exceptions, so try/except here works.
+                        result = await asyncio.to_thread(upload_excel_to_sheet, downloaded_file, task['target_tab'])
+                        if result:
+                            logger.info(f'✅ Upload successfully completed for {task["company_name"]}')
+                        else:
+                            logger.error(f'❌ Upload returned False for {task["company_name"]}')
+                    except Exception as upload_error:
+                        logger.error(f'❌ Async Upload Failed: {str(upload_error)}')
+
+                else:
+                    logger.warning(f'⚠️ Download failed or file not found: {downloaded_file}')
                 
                 logger.info(f'✅ Task {i+1} Completed for {task["company_name"]}')
 
