@@ -10,8 +10,7 @@ from bot.actions import (
     clear_filters,
     set_document_status,
     search_data,
-    download_excel,
-    download_excel_popup  # Import new function
+    download_excel
 )
 from bot.sheets import upload_excel_to_sheet
 
@@ -61,12 +60,12 @@ async def main():
             tasks = [
                 {
                     'company_name': '주식회사 라포랩스', 
-                    'target_tab': 'A10 RPLS', 
+                    'target_tab': 'A10 지출결의_RPLS', 
                     'needs_switch': False # Assumes default login is Rapport Labs
                 },
                 {
                     'company_name': '주식회사 라포스튜디오', 
-                    'target_tab': 'A10 RPST', 
+                    'target_tab': 'A10 지출결의_RPST', 
                     'needs_switch': True
                 }
             ]
@@ -102,7 +101,7 @@ async def main():
 
                 # 6️⃣ Download Excel
                 logger.info(f'\n========== Step {i+1}-6: Download Excel ==========')
-                downloaded_file = await download_excel_popup(page) # Use new popup function
+                downloaded_file = await download_excel(page)
                 
                 if downloaded_file and os.path.exists(downloaded_file):
                     logger.info(f'📂 Download successful: {downloaded_file}')

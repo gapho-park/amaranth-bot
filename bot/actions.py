@@ -306,3 +306,120 @@ async def download_excel(page: Page) -> Optional[str]:
     except Exception as error:
         logger.error(f'❌ download_excel failed: {str(error)}')
         return None
+
+async def download_excel_popup(page: Page) -> Optional[str]:
+    """
+    New Flow:
+    1. Click "상하단 데이터 전체조회" button
+    2. Wait 5 seconds
+    3. In the popup, Right Click -> Convert to Excel
+    4. Download
+    """
+    try:
+        logger.info('📥 Starting Popup Excel Download Sequence...')
+
+        # 1. Click "상하단 데이터 전체조회" button
+        logger.info('🖱️ Clicking "상하단 데이터 전체조회"...')
+        # Try to find the button by text
+        popup_btn = page.locator('button', has_text='상하단 데이터 전체조회').first
+        if not await popup_btn.is_visible():
+            # Fallback: try finding by text directly if button tag is not wrapper
+            popup_btn = page.locator('text="상하단 데이터 전체조회"').first
+        
+        await popup_btn.wait_for(state='visible', timeout=5000)
+        await popup_btn.click()
+        logger.info('✅ "상하단 데이터 전체조회" clicked')
+
+        # 2. Wait 5 seconds
+        logger.info('⏳ Waiting 5 seconds for popup...')
+        await page.wait_for_timeout(5000)
+
+        # 3. Right Click in the popup
+        # We need to find an element inside the popup to right-click.
+        # Usually, the popup has a grid or some content.
+        # Let's assume the popup is the focused active window or find a grid inside it.
+        
+        # Strategy: Find the last opened dialog/window or just click in the center of the screen 
+        # if the popup is modal and centered.
+        # Or better, look for a grid row in the popup.
+        
+        logger.info('📍 Attempting right click in popup...')
+        
+        # Try to find a grid row in the popup (assuming it has similar structure to main grid)
+        # We'll try to click somewhat centrally in the latest opened dialog
+        
+        # Finding the latest dialog
+        dialog = page.locator('.OBTDialog, .ui-dialog').last
+        if await dialog.is_visible():
+            box = await dialog.bounding_box()
+            if box:
+                # Click in the center of the dialog
+                target_x = box['x'] + (box['width'] / 2)
+                target_y = box['y'] + (box['height'] / 2)
+                
+                logger.info(f'📍 Popup found. Right clicking at ({target_x}, {target_y})')
+                await page.mouse.click(target_x, target_y, button='right')
+            else:
+                 # Fallback
+                 logger.warning('⚠️ Popup bounding box not found. Clicking center screen.')
+                 vp = page.viewport_size
+                 await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
+        else:
+            logger.warning('⚠️ Popup selector not found. Trying generic right click in center.')
+            vp = page.viewport_size
+            await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
+
+        await page.wait_for_timeout(500)
+
+        # 4. Click "엑셀변환하기" (Convert to Excel)
+        logger.info('📄 Clicking "엑셀변환하기"...')
+        # Need to be careful to click the one in the new context menu, 
+        # essentially the last visible one
+        convert_btn = page.locator('text="엑셀변환하기"').last
+        await convert_btn.wait_for(state='visible', timeout=3000)
+        await convert_btn.click()
+
+        # 5. Confirm download popup
+        logger.info('⏳ Waiting for Excel Conversion confirmation...')
+        await page.wait_for_timeout(1000)
+        
+        async with page.expect_download() as download_info:
+            # Click Confirm "확인"
+            confirm_btn = page.locator('button:has-text("확인")').last
+            await confirm_btn.click()
+        
+        download = await download_info.value
+        suggested_name = download.suggested_filename
+        if not os.path.splitext(suggested_name)[1]:
+            suggested_name += '.xls'
+            
+        download_dir = Config.DOWNLOAD_PATH
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+            
+        save_path = os.path.join(download_dir, suggested_name)
+        await download.save_as(save_path)
+        
+        logger.info(f'✅ Popup Excel file downloaded: {save_path}')
+
+        # 6. Close the popup to return to main screen
+        logger.info('❌ Closing popup (Pressing ESC)...')
+        await page.keyboard.press('Escape')
+        await page.wait_for_timeout(500)
+        
+        # Wait for dim layer to disappear (ensure popup is closed)
+        try:
+            # _dimClicker is usually the class for the modal background
+            dim_layer = page.locator('._dimClicker').first
+            if await dim_layer.is_visible():
+                logger.info('  - Dim layer still visible, pressing ESC again...')
+                await page.keyboard.press('Escape')
+                await page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+        return save_path
+
+    except Exception as error:
+        logger.error(f'❌ download_excel_popup failed: {str(error)}')
+        return None
