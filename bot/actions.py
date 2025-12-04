@@ -1,5 +1,4 @@
 from playwright.async_api import Page
-from typing import Optional
 from logger import logger
 from config import Config
 import os
@@ -78,56 +77,43 @@ async def set_application_date(page: Page) -> bool:
 
 async def clear_filters(page: Page) -> bool:
     """
-    Step 2: Process Filters Sequence & Trigger Search
-    User Flow:
-    - (After Date Set)
-    - Enter (Pass Approval Status)
-    - Enter (Pass Doc Class)
-    - Enter (Pass Doc Title)
-    - Enter (Pass Doc Number)
-    - Delete -> Enter (Clear Department)
-    - Delete -> Enter (Clear Drafter)
-    - Enter (Pass Document Status -> Triggers Search)
+    Step 2: Clear Department and Drafter Filters
+    - (From Application Date input state)
+    - Enter 4 times (Tab move)
+    - Delete 1 time + Enter 1 time (Clear Department)
+    - Delete 1 time + Enter 1 time (Clear Drafter)
     """
     try:
-        logger.info('🎹 Processing Filter Sequence & Searching...')
-        
+        logger.info('🗑️  Starting Clear Filters Sequence...')
+
         await page.wait_for_timeout(300)
 
-        # 1. Approval Status -> Enter
-        # 2. Document Class -> Enter
-        # 3. Document Title -> Enter
-        # 4. Document Number -> Enter
-        logger.info('↩️  Passing 4 filters (Approval, Class, Title, Number)...')
+        # 1) Enter 4 times (Move to next filters)
+        logger.info('↩️ Pressing Enter 4 times to move...')
         for _ in range(4):
             await page.keyboard.press('Enter')
             await page.wait_for_timeout(150)
-
-        # 5. Department -> Delete, Enter
-        logger.info('🏢 Clearing Department (Delete → Enter)...')
-        await page.keyboard.press('Delete')
-        await page.wait_for_timeout(150)
-        await page.keyboard.press('Enter')
-        await page.wait_for_timeout(150)
-
-        # 6. Drafter -> Delete, Enter
-        logger.info('👤 Clearing Drafter (Delete → Enter)...')
-        await page.keyboard.press('Delete')
-        await page.wait_for_timeout(150)
-        await page.keyboard.press('Enter')
-        await page.wait_for_timeout(150)
-
-        # 7. Document Status -> Enter (Triggers Search)
-        logger.info('🔍 Triggering Search (Enter on Document Status)...')
-        await page.keyboard.press('Enter')
-
-        # Wait for data load
-        logger.info('⏳ Waiting for data load...')
-        await page.wait_for_timeout(3000)
         
+        await page.wait_for_timeout(300)
+
+        # 2) Clear Department (Delete + Enter)
+        logger.info('🏢 Clearing Department Filter (Delete → Enter)...')
+        await page.keyboard.press('Delete')
+        await page.wait_for_timeout(200)
+        await page.keyboard.press('Enter')
+        await page.wait_for_timeout(300)
+
+        # 3) Clear Drafter (Delete + Enter)
+        logger.info('👤 Clearing Drafter Filter (Delete → Enter)...')
+        await page.keyboard.press('Delete')
+        await page.wait_for_timeout(200)
+        await page.keyboard.press('Enter')
+        await page.wait_for_timeout(500)
+
+        logger.info('✅ Department/Drafter Filters cleared')
         return True
     except Exception as error:
-        logger.error(f'❌ clear_filters sequence failed: {str(error)}')
+        logger.error(f'❌ clear_filters failed: {str(error)}')
         return False
 
 async def set_document_status(page: Page) -> bool:
@@ -210,12 +196,9 @@ async def search_data(page: Page) -> bool:
         logger.error(f'❌ search_data failed: {str(error)}')
         return False
 
-async def download_excel(page: Page) -> Optional[str]:
+async def download_excel(page: Page) -> bool:
     """
     Step 5: Right click grid → Convert to Excel → Download file
-    Returns:
-        str: Path to the downloaded file if successful
-        None: If failed
     """
     try:
         logger.info('📥 Attempting Excel Download...')
@@ -302,124 +285,7 @@ async def download_excel(page: Page) -> Optional[str]:
         await download.save_as(save_path)
         logger.info(f'✅ Excel file downloaded: {save_path}')
 
-        return save_path
+        return True
     except Exception as error:
         logger.error(f'❌ download_excel failed: {str(error)}')
-        return None
-
-async def download_excel_popup(page: Page) -> Optional[str]:
-    """
-    New Flow:
-    1. Click "상하단 데이터 전체조회" button
-    2. Wait 5 seconds
-    3. In the popup, Right Click -> Convert to Excel
-    4. Download
-    """
-    try:
-        logger.info('📥 Starting Popup Excel Download Sequence...')
-
-        # 1. Click "상하단 데이터 전체조회" button
-        logger.info('🖱️ Clicking "상하단 데이터 전체조회"...')
-        # Try to find the button by text
-        popup_btn = page.locator('button', has_text='상하단 데이터 전체조회').first
-        if not await popup_btn.is_visible():
-            # Fallback: try finding by text directly if button tag is not wrapper
-            popup_btn = page.locator('text="상하단 데이터 전체조회"').first
-        
-        await popup_btn.wait_for(state='visible', timeout=5000)
-        await popup_btn.click()
-        logger.info('✅ "상하단 데이터 전체조회" clicked')
-
-        # 2. Wait 5 seconds
-        logger.info('⏳ Waiting 5 seconds for popup...')
-        await page.wait_for_timeout(5000)
-
-        # 3. Right Click in the popup
-        # We need to find an element inside the popup to right-click.
-        # Usually, the popup has a grid or some content.
-        # Let's assume the popup is the focused active window or find a grid inside it.
-        
-        # Strategy: Find the last opened dialog/window or just click in the center of the screen 
-        # if the popup is modal and centered.
-        # Or better, look for a grid row in the popup.
-        
-        logger.info('📍 Attempting right click in popup...')
-        
-        # Try to find a grid row in the popup (assuming it has similar structure to main grid)
-        # We'll try to click somewhat centrally in the latest opened dialog
-        
-        # Finding the latest dialog
-        dialog = page.locator('.OBTDialog, .ui-dialog').last
-        if await dialog.is_visible():
-            box = await dialog.bounding_box()
-            if box:
-                # Click in the center of the dialog
-                target_x = box['x'] + (box['width'] / 2)
-                target_y = box['y'] + (box['height'] / 2)
-                
-                logger.info(f'📍 Popup found. Right clicking at ({target_x}, {target_y})')
-                await page.mouse.click(target_x, target_y, button='right')
-            else:
-                 # Fallback
-                 logger.warning('⚠️ Popup bounding box not found. Clicking center screen.')
-                 vp = page.viewport_size
-                 await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
-        else:
-            logger.warning('⚠️ Popup selector not found. Trying generic right click in center.')
-            vp = page.viewport_size
-            await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
-
-        await page.wait_for_timeout(500)
-
-        # 4. Click "엑셀변환하기" (Convert to Excel)
-        logger.info('📄 Clicking "엑셀변환하기"...')
-        # Need to be careful to click the one in the new context menu, 
-        # essentially the last visible one
-        convert_btn = page.locator('text="엑셀변환하기"').last
-        await convert_btn.wait_for(state='visible', timeout=3000)
-        await convert_btn.click()
-
-        # 5. Confirm download popup
-        logger.info('⏳ Waiting for Excel Conversion confirmation...')
-        await page.wait_for_timeout(1000)
-        
-        async with page.expect_download() as download_info:
-            # Click Confirm "확인"
-            confirm_btn = page.locator('button:has-text("확인")').last
-            await confirm_btn.click()
-        
-        download = await download_info.value
-        suggested_name = download.suggested_filename
-        if not os.path.splitext(suggested_name)[1]:
-            suggested_name += '.xls'
-            
-        download_dir = Config.DOWNLOAD_PATH
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-            
-        save_path = os.path.join(download_dir, suggested_name)
-        await download.save_as(save_path)
-        
-        logger.info(f'✅ Popup Excel file downloaded: {save_path}')
-
-        # 6. Close the popup to return to main screen
-        logger.info('❌ Closing popup (Pressing ESC)...')
-        await page.keyboard.press('Escape')
-        await page.wait_for_timeout(500)
-        
-        # Wait for dim layer to disappear (ensure popup is closed)
-        try:
-            # _dimClicker is usually the class for the modal background
-            dim_layer = page.locator('._dimClicker').first
-            if await dim_layer.is_visible():
-                logger.info('  - Dim layer still visible, pressing ESC again...')
-                await page.keyboard.press('Escape')
-                await page.wait_for_timeout(500)
-        except Exception:
-            pass
-
-        return save_path
-
-    except Exception as error:
-        logger.error(f'❌ download_excel_popup failed: {str(error)}')
-        return None
+        return False

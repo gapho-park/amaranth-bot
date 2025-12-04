@@ -290,17 +290,6 @@ async def switch_company(page: Page, target_company_name: str):
         else:
             logger.warning('⚠️ Could not find first Confirm button')
 
-        # 6. Wait for page reload/stabilization after company switch
-        logger.info('⏳ Waiting for company switch reload...')
-        await page.wait_for_timeout(3000)  # Wait for reload to start
-        try:
-            await page.wait_for_load_state('networkidle', timeout=15000)
-            logger.info('✅ Company switch reload completed')
-        except Exception:
-            logger.warning('⚠️ Reload wait timed out (continuing anyway)')
-            
-        await page.wait_for_timeout(1000) # Extra safety buffer
-
     except Exception as e:
         logger.error(f'❌ Failed to switch company: {str(e)}')
         raise e
