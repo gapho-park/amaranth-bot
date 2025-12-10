@@ -2,8 +2,8 @@ name: Amaranth Bot Daily Schedule
 
 on:
   schedule:
-    # Run every 20 minutes
-    - cron: '*/20 * * * *'
+    # Run every hour, weekdays only (Mon-Fri)
+    - cron: '0 * * * 1-5'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
