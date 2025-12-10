@@ -222,6 +222,19 @@ def upload_to_google_sheet(data_list):
         # 시트 업데이트
         worksheet.update(range_name='A1', values=[headers] + values)
         
+        # 컬럼별 스타일 적용
+        data_rows = len(values)
+        if data_rows > 0:
+            # E, N 컬럼: 날짜 형식 (승인일, 작성일)
+            worksheet.format(f'E2:E{data_rows + 1}', {'numberFormat': {'type': 'DATE', 'pattern': 'yyyy-mm-dd'}})
+            worksheet.format(f'N2:N{data_rows + 1}', {'numberFormat': {'type': 'DATE', 'pattern': 'yyyy-mm-dd'}})
+            
+            # H, R 컬럼: 텍스트 형식 (거래처코드, 사용부서코드 - 앞자리 0 보존)
+            worksheet.format(f'H2:H{data_rows + 1}', {'numberFormat': {'type': 'TEXT'}})
+            worksheet.format(f'R2:R{data_rows + 1}', {'numberFormat': {'type': 'TEXT'}})
+            
+            logger.info("📋 컬럼 스타일 적용 완료 (E,N: 날짜 / H,R: 텍스트)")
+        
         # 업데이트 시간 별도 표기 (헤더 옆)
         worksheet.update_cell(1, len(headers) + 2, "업데이트")
         worksheet.update_cell(2, len(headers) + 2, update_time)
