@@ -114,12 +114,12 @@ def call_account_ledger_api(params):
     }
     
     try:
-        # timeout=30 추가 (30초 대기)
-        response = requests.post(api_url, headers=headers, json=request_body, verify=True, timeout=30)
+        # timeout=120 (2분 - 대용량 데이터 대응)
+        response = requests.post(api_url, headers=headers, json=request_body, verify=True, timeout=120)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.Timeout:
-        logger.error(f"API Request Timeout (30s)")
+        logger.error(f"API Request Timeout (120s)")
         return {"resultCode": -1, "resultMsg": "Timeout"}
     except requests.exceptions.RequestException as e:
         logger.error(f"API Request Failed: {e}")
@@ -150,9 +150,9 @@ def fetch_all_pages_for_account(base_params):
             all_data.extend(datas)
             
         current_page += 1
-        # API 과부하 방지를 위해 짧은 대기
+        # API 과부하 방지를 위해 대기 (Apps Script와 동일: 200ms)
         if current_page <= total_page:
-            time.sleep(0.1)
+            time.sleep(0.2)
             
     return all_data
 
@@ -229,7 +229,9 @@ def upload_to_google_sheet(data_list):
         logger.info(f"✅ 시트 업로드 완료: {len(values)}건")
         
     except Exception as e:
+        import traceback
         logger.error(f"❌ 시트 업로드 실패: {e}")
+        logger.error(f"상세 오류: {traceback.format_exc()}")
 
 def run_ledger_bot():
     """메인 실행 함수"""
@@ -242,7 +244,7 @@ def run_ledger_bot():
         'prtFg': '2',
         'zeroDisp': '0',
         'viewPage': 1,
-        'viewCount': 100
+        'viewCount': 100000  # Apps Script와 동일 (10만건)
     }
     
     logger.info(f"=== 판관비 계정별원장 조회 시작 ({base_params['fillDtFrom']} ~ {base_params['fillDtTo']}) ===")
@@ -268,7 +270,7 @@ def run_ledger_bot():
                 logger.info(f"[{i+1}/{len(SGA_ACCOUNTS)}] {acct_cd}: 데이터 없음") # 빈 것도 로그 출력
                 empty_count += 1
                 
-            time.sleep(0.1) # 루프 간 짧은 대기
+            time.sleep(0.3)  # Apps Script와 동일 (300ms)
             
         except Exception as e:
             logger.error(f"[{i+1}/{len(SGA_ACCOUNTS)}] {acct_cd}: ❌ {e}")
