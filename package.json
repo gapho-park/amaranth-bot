@@ -8,14 +8,30 @@
     "dev": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["amaranth10", "automation", "playwright"],
+  "keywords": [
+    "amaranth10",
+    "automation",
+    "playwright"
+  ],
   "author": "gapho",
   "license": "MIT",
   "dependencies": {
-    "playwright": "^1.48.0",
-    "dotenv": "^16.4.5"
+    "axios": "^1.13.2",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.6.1",
+    "google-spreadsheet": "^5.0.2",
+    "playwright": "^1.48.0"
   },
   "engines": {
     "node": "18.x"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gapho-park/amaranth-bot.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gapho-park/amaranth-bot/issues"
+  },
+  "homepage": "https://github.com/gapho-park/amaranth-bot#readme"
 }

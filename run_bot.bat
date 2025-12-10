@@ -6,3 +6,9 @@ python main.py
 echo.
 echo ✅ 실행이 완료되었습니다.
 pause
+
+
+
+
+
+
