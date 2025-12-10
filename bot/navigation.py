@@ -285,6 +285,12 @@ async def switch_company(page: Page, target_company_name: str):
                     if await confirm_btn.is_visible():
                         await confirm_btn.click()
                         logger.info('✅ Confirm button (2nd - warning popup) clicked')
+                        
+                        # Wait for page reload after company switch
+                        logger.info('⏳ Waiting for page reload after company switch...')
+                        await page.wait_for_load_state('networkidle', timeout=30000)
+                        await page.wait_for_timeout(2000)  # Additional stability wait
+                        logger.info('✅ Page reloaded after company switch')
             except Exception as e:
                 logger.warning(f'⚠️ Error handling second popup: {str(e)}')
         else:
