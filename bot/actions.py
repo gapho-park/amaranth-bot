@@ -359,10 +359,34 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         
         # Count actual rows in the grid for debugging
         try:
-            # Try to count grid rows in popup
-            grid_rows = page.locator('tr[data-index], .OBTDataGridBodyRow, [class*="GridRow"], [class*="grid-row"]')
-            row_count = await grid_rows.count()
-            logger.info(f'📊 Grid rows detected in popup: {row_count}')
+            # Try multiple selectors for grid rows (Amaranth uses various patterns)
+            row_selectors = [
+                'tr[data-index]',
+                '.OBTDataGridBodyRow',
+                '[class*="GridRow"]',
+                '[class*="grid-row"]',
+                '.dx-data-row',
+                'tr.dx-row',
+                '[class*="DataRow"]',
+                'tbody tr',  # Generic table rows
+            ]
+            
+            total_rows = 0
+            matched_selector = None
+            for selector in row_selectors:
+                try:
+                    grid_rows = page.locator(selector)
+                    count = await grid_rows.count()
+                    if count > total_rows:
+                        total_rows = count
+                        matched_selector = selector
+                except Exception:
+                    continue
+            
+            if total_rows > 0:
+                logger.info(f'📊 Grid rows detected in popup: {total_rows} (via {matched_selector})')
+            else:
+                logger.warning(f'📊 Grid rows detected in popup: 0 (no matching selector)')
         except Exception as e:
             logger.warning(f'  - Could not count grid rows: {e}')
         
@@ -400,39 +424,58 @@ async def download_excel_popup(page: Page) -> Optional[str]:
             pass
 
         # 3. Right Click in the popup
-        # We need to find an element inside the popup to right-click.
-        # Usually, the popup has a grid or some content.
-        # Let's assume the popup is the focused active window or find a grid inside it.
-        
-        # Strategy: Find the last opened dialog/window or just click in the center of the screen 
-        # if the popup is modal and centered.
-        # Or better, look for a grid row in the popup.
-        
         logger.info('📍 Attempting right click in popup...')
         
-        # Try to find a grid row in the popup (assuming it has similar structure to main grid)
-        # We'll try to click somewhat centrally in the latest opened dialog
+        # Try multiple dialog/popup selectors (Amaranth 10 uses various patterns)
+        popup_selectors = [
+            '.OBTDialog',
+            '.ui-dialog', 
+            '[role="dialog"]',
+            '.modal-content',
+            '.popup',
+            '.OBTPopup',
+            'div[class*="Dialog"]',
+            'div[class*="Popup"]',
+            'div[class*="Modal"]',
+            '.AllGridPopup',
+            'div[class*="AllGrid"]',
+        ]
         
-        # Finding the latest dialog
-        dialog = page.locator('.OBTDialog, .ui-dialog').last
-        if await dialog.is_visible():
-            box = await dialog.bounding_box()
-            if box:
-                # Click in the center of the dialog
-                target_x = box['x'] + (box['width'] / 2)
-                target_y = box['y'] + (box['height'] / 2)
-                
-                logger.info(f'📍 Popup found. Right clicking at ({target_x}, {target_y})')
-                await page.mouse.click(target_x, target_y, button='right')
-            else:
-                 # Fallback
-                 logger.warning('⚠️ Popup bounding box not found. Clicking center screen.')
-                 vp = page.viewport_size
-                 await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
-        else:
-            logger.warning('⚠️ Popup selector not found. Trying generic right click in center.')
+        popup_found = False
+        for selector in popup_selectors:
+            try:
+                dialog = page.locator(selector).last
+                if await dialog.is_visible(timeout=500):
+                    box = await dialog.bounding_box()
+                    if box and box['width'] > 100 and box['height'] > 100:
+                        target_x = box['x'] + (box['width'] / 2)
+                        target_y = box['y'] + (box['height'] / 2)
+                        logger.info(f'📍 Popup found with selector "{selector}". Right clicking at ({target_x:.0f}, {target_y:.0f})')
+                        await page.mouse.click(target_x, target_y, button='right')
+                        popup_found = True
+                        break
+            except Exception:
+                continue
+        
+        if not popup_found:
+            # Fallback: Look for the popup title "상하단 데이터 전체조회"
+            try:
+                popup_title = page.locator('text="상하단 데이터 전체조회"').last
+                if await popup_title.is_visible():
+                    box = await popup_title.bounding_box()
+                    if box:
+                        target_x = box['x'] + 200
+                        target_y = box['y'] + 200
+                        logger.info(f'📍 Found popup by title. Right clicking at ({target_x:.0f}, {target_y:.0f})')
+                        await page.mouse.click(target_x, target_y, button='right')
+                        popup_found = True
+            except Exception:
+                pass
+        
+        if not popup_found:
+            logger.warning('⚠️ No popup selector matched. Falling back to center-right of screen.')
             vp = page.viewport_size
-            await page.mouse.click(vp['width']/2, vp['height']/2, button='right')
+            await page.mouse.click(vp['width'] * 0.6, vp['height'] * 0.5, button='right')
 
         await page.wait_for_timeout(500)
 
