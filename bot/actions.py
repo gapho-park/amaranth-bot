@@ -121,9 +121,19 @@ async def clear_filters(page: Page) -> bool:
         logger.info('🔍 Triggering Search (Enter on Document Status)...')
         await page.keyboard.press('Enter')
 
-        # Wait for data load
+        # Wait for data load (increased for schedule runs)
         logger.info('⏳ Waiting for data load...')
         await page.wait_for_timeout(3000)
+        
+        # Wait for network idle after search
+        try:
+            await page.wait_for_load_state('networkidle', timeout=15000)
+            logger.info('  - Search: Network idle detected')
+        except Exception:
+            logger.warning('  - Search: Network idle timeout, continuing...')
+        
+        # Additional buffer
+        await page.wait_for_timeout(2000)
         
         return True
     except Exception as error:
@@ -357,16 +367,25 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         except Exception:
             pass
         
-        # Additional wait for network idle
+        # Additional wait for network idle (increased timeout for schedule runs)
         try:
-            await page.wait_for_load_state('networkidle', timeout=15000)
+            await page.wait_for_load_state('networkidle', timeout=30000)
             logger.info('  - Network idle detected')
         except Exception:
-            logger.warning('  - Network idle timeout, continuing...')
+            logger.warning('  - Network idle timeout (30s), continuing...')
         
-        # Extra buffer time for rendering
-        await page.wait_for_timeout(3000)
+        # Extra buffer time for rendering (increased for reliability)
+        await page.wait_for_timeout(5000)
         logger.info('✅ Popup should be fully loaded')
+        
+        # Count actual rows in the grid for debugging
+        try:
+            # Try to count grid rows in popup
+            grid_rows = page.locator('tr[data-index], .OBTDataGridBodyRow, [class*="GridRow"], [class*="grid-row"]')
+            row_count = await grid_rows.count()
+            logger.info(f'📊 Grid rows detected in popup: {row_count}')
+        except Exception as e:
+            logger.warning(f'  - Could not count grid rows: {e}')
 
         # 2.5. Try to get row count for logging (helps debug missing data)
         try:
