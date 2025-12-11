@@ -69,3 +69,11 @@ jobs:
         name: excel-downloads-${{ github.run_number }}
         path: downloads/
         retention-days: 7  # 7일간 보관
+
+    - name: Upload screenshots for debugging
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: screenshots-${{ github.run_number }}
+        path: screenshots/
+        retention-days: 7

@@ -386,6 +386,18 @@ async def download_excel_popup(page: Page) -> Optional[str]:
             logger.info(f'📊 Grid rows detected in popup: {row_count}')
         except Exception as e:
             logger.warning(f'  - Could not count grid rows: {e}')
+        
+        # Take screenshot for debugging (especially for headless mode)
+        try:
+            import os
+            screenshot_dir = './screenshots'
+            if not os.path.exists(screenshot_dir):
+                os.makedirs(screenshot_dir)
+            screenshot_path = f'{screenshot_dir}/popup_before_download.png'
+            await page.screenshot(path=screenshot_path, full_page=False)
+            logger.info(f'📸 Screenshot saved: {screenshot_path}')
+        except Exception as e:
+            logger.warning(f'  - Could not take screenshot: {e}')
 
         # 2.5. Try to get row count for logging (helps debug missing data)
         try:
