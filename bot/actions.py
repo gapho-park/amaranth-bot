@@ -346,36 +346,44 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         # Initial wait for popup to appear
         await page.wait_for_timeout(3000)
         
-        # Wait for loading indicator to disappear (if any)
-        try:
-            # Common loading indicators in Amaranth
-            loading_selectors = [
-                '.loading',
-                '.OBTLoading',
-                '[class*="loading"]',
-                '[class*="Loading"]',
-                '.spinner'
-            ]
-            for selector in loading_selectors:
-                try:
-                    loading = page.locator(selector).first
-                    if await loading.is_visible():
-                        logger.info(f'  - Waiting for {selector} to disappear...')
-                        await loading.wait_for(state='hidden', timeout=60000)  # 60초로 증가
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Smart waiting: Wait until data is actually loaded (not just time-based)
+        max_wait_seconds = 60
+        check_interval = 2
+        elapsed = 0
+        data_loaded = False
         
-        # Additional wait for network idle (increased timeout for GitHub Actions)
-        try:
-            await page.wait_for_load_state('networkidle', timeout=60000)  # 60초로 증가
-            logger.info('  - Network idle detected')
-        except Exception:
-            logger.warning('  - Network idle timeout (60s), continuing...')
+        while elapsed < max_wait_seconds:
+            # Check if loading indicator is still visible
+            try:
+                loading = page.locator('[class*="Loading"], [class*="loading"], .spinner').first
+                if await loading.is_visible():
+                    logger.info(f'  - Loading... ({elapsed}s)')
+                    await page.wait_for_timeout(check_interval * 1000)
+                    elapsed += check_interval
+                    continue
+            except Exception:
+                pass
+            
+            # Check if grid has rows (data loaded)
+            try:
+                # Look for actual data rows in the popup grid
+                grid_rows = page.locator('.OBTDataGridBodyRow, [class*="GridRow"] td, table tbody tr')
+                row_count = await grid_rows.count()
+                if row_count > 5:  # At least some data rows
+                    logger.info(f'  - Data loaded! ({row_count} rows detected after {elapsed}s)')
+                    data_loaded = True
+                    break
+            except Exception:
+                pass
+            
+            await page.wait_for_timeout(check_interval * 1000)
+            elapsed += check_interval
         
-        # Extra buffer time for rendering (significantly increased for GitHub Actions)
-        await page.wait_for_timeout(10000)  # 10초로 증가
+        if not data_loaded:
+            logger.warning(f'  - Max wait time reached ({max_wait_seconds}s). Proceeding anyway...')
+        
+        # Small buffer after data load
+        await page.wait_for_timeout(2000)
         logger.info('✅ Popup should be fully loaded')
         
         # Count actual rows in the grid for debugging
