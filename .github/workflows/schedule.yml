@@ -54,7 +54,18 @@ jobs:
         print('✅ service_account.json created successfully')
         "
 
+    - name: Create downloads directory
+      run: mkdir -p downloads
+
     - name: Run Bot
       run: python main.py
       env:
         PYTHONIOENCODING: utf-8
+
+    - name: Upload downloaded Excel files as artifact
+      uses: actions/upload-artifact@v4
+      if: always()  # 실패해도 업로드
+      with:
+        name: excel-downloads-${{ github.run_number }}
+        path: downloads/
+        retention-days: 7  # 7일간 보관
