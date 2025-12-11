@@ -363,15 +363,42 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         logger.info('📜 Loading all data in popup grid (Ctrl+End)...')
         
         try:
-            # Click in popup center to give grid focus
-            vp = page.viewport_size
-            await page.mouse.click(vp['width'] * 0.5, vp['height'] * 0.5)
+            # IMPORTANT: Must click INSIDE the grid to give it focus
+            # Try multiple selectors to find the grid inside the popup
+            grid_selectors = [
+                'tbody tr td',           # Table cell (most reliable for focus)
+                '.OBTDataGrid tbody',    # Amaranth grid body
+                '[class*="DataGrid"] tbody',
+                '[class*="Grid"] tbody',
+                'table tbody',
+                '.grid-container',
+            ]
+            
+            grid_clicked = False
+            for selector in grid_selectors:
+                try:
+                    grid_elem = page.locator(selector).first
+                    if await grid_elem.is_visible(timeout=1000):
+                        # Click the grid element to give it focus
+                        await grid_elem.click()
+                        grid_clicked = True
+                        logger.info(f'  - Grid clicked for focus: {selector}')
+                        break
+                except Exception:
+                    continue
+            
+            if not grid_clicked:
+                # Fallback: click in popup center area
+                logger.warning('  - Grid not found, clicking popup center as fallback')
+                vp = page.viewport_size
+                await page.mouse.click(vp['width'] * 0.5, vp['height'] * 0.5)
+            
             await page.wait_for_timeout(500)
             
             # Ctrl+End: Jump to last row (triggers full data load)
             await page.keyboard.press('Control+End')
             logger.info('  - Ctrl+End pressed (jump to last row)')
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)  # Increased wait for data load
             
             # Wait for data to load
             try:
