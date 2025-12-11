@@ -91,7 +91,7 @@ async def clear_filters(page: Page) -> bool:
     """
     try:
         logger.info('🎹 Processing Filter Sequence & Searching...')
-        
+
         await page.wait_for_timeout(300)
 
         # 1. Approval Status -> Enter
@@ -102,7 +102,7 @@ async def clear_filters(page: Page) -> bool:
         for _ in range(4):
             await page.keyboard.press('Enter')
             await page.wait_for_timeout(150)
-
+        
         # 5. Department -> Delete, Enter
         logger.info('🏢 Clearing Department (Delete → Enter)...')
         await page.keyboard.press('Delete')
@@ -357,75 +357,33 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         await page.wait_for_timeout(3000)
         logger.info('✅ Popup should be fully loaded')
         
-        # ===== CRITICAL FIX: Scroll to load ALL data in virtual grid =====
+        # ===== CRITICAL FIX: Load ALL data in virtual grid using Ctrl+End =====
         # Amaranth popup uses lazy loading - only visible rows are loaded initially
-        # We need to scroll to the end to force load all data
-        logger.info('📜 Scrolling popup grid to load all data (virtual scroll fix)...')
+        # Ctrl+End jumps to last row and forces all data to load
+        logger.info('📜 Loading all data in popup grid (Ctrl+End)...')
         
         try:
-            # Method 1: Try clicking in the grid area first to give it focus
-            grid_selectors = [
-                '.OBTDataGrid',
-                '[class*="DataGrid"]',
-                '[class*="Grid"]',
-                'table',
-                '.grid-container',
-                '[class*="grid"]',
-            ]
-            
-            grid_clicked = False
-            for selector in grid_selectors:
-                try:
-                    grid_elem = page.locator(selector).last
-                    if await grid_elem.is_visible(timeout=500):
-                        await grid_elem.click()
-                        grid_clicked = True
-                        logger.info(f'  - Grid clicked for focus: {selector}')
-                        break
-                except Exception:
-                    continue
-            
-            if not grid_clicked:
-                # Fallback: click in popup center area (likely where grid is)
-                vp = page.viewport_size
-                await page.mouse.click(vp['width'] * 0.5, vp['height'] * 0.5)
-                logger.info('  - Clicked center of screen for focus')
-            
+            # Click in popup center to give grid focus
+            vp = page.viewport_size
+            await page.mouse.click(vp['width'] * 0.5, vp['height'] * 0.5)
             await page.wait_for_timeout(500)
             
-            # Method 2: Use Ctrl+End to jump to the last row (loads all data)
-            logger.info('  - Pressing Ctrl+End to jump to last row...')
+            # Ctrl+End: Jump to last row (triggers full data load)
             await page.keyboard.press('Control+End')
+            logger.info('  - Ctrl+End pressed (jump to last row)')
             await page.wait_for_timeout(2000)
             
-            # Wait for network after scroll
+            # Wait for data to load
             try:
                 await page.wait_for_load_state('networkidle', timeout=15000)
                 logger.info('  - Network idle after Ctrl+End')
             except Exception:
                 pass
             
-            # Method 3: Additional Page Down presses to ensure all data loaded
-            logger.info('  - Pressing Page Down multiple times to ensure full load...')
-            for i in range(5):
-                await page.keyboard.press('PageDown')
-                await page.wait_for_timeout(500)
-            
-            # Go back to top
-            logger.info('  - Pressing Ctrl+Home to return to top...')
-            await page.keyboard.press('Control+Home')
-            await page.wait_for_timeout(1000)
-            
-            # Final network idle wait
-            try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
-            except Exception:
-                pass
-            
-            logger.info('✅ Virtual scroll data loading complete')
+            logger.info('✅ All data loaded')
             
         except Exception as scroll_error:
-            logger.warning(f'⚠️ Scroll loading had issues: {scroll_error}')
+            logger.warning(f'⚠️ Data loading had issues: {scroll_error}')
         
         # Count actual rows in the grid for debugging
         try:
