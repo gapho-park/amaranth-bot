@@ -330,9 +330,64 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         await popup_btn.click()
         logger.info('✅ "상하단 데이터 전체조회" clicked')
 
-        # 2. Wait 5 seconds
-        logger.info('⏳ Waiting 5 seconds for popup...')
-        await page.wait_for_timeout(5000)
+        # 2. Wait for popup to fully load (increased timeout + loading check)
+        logger.info('⏳ Waiting for popup data to fully load...')
+        
+        # Initial wait for popup to appear
+        await page.wait_for_timeout(3000)
+        
+        # Wait for loading indicator to disappear (if any)
+        try:
+            # Common loading indicators in Amaranth
+            loading_selectors = [
+                '.loading',
+                '.OBTLoading',
+                '[class*="loading"]',
+                '[class*="Loading"]',
+                '.spinner'
+            ]
+            for selector in loading_selectors:
+                try:
+                    loading = page.locator(selector).first
+                    if await loading.is_visible():
+                        logger.info(f'  - Waiting for {selector} to disappear...')
+                        await loading.wait_for(state='hidden', timeout=30000)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        # Additional wait for network idle
+        try:
+            await page.wait_for_load_state('networkidle', timeout=15000)
+            logger.info('  - Network idle detected')
+        except Exception:
+            logger.warning('  - Network idle timeout, continuing...')
+        
+        # Extra buffer time for rendering
+        await page.wait_for_timeout(3000)
+        logger.info('✅ Popup should be fully loaded')
+
+        # 2.5. Try to get row count for logging (helps debug missing data)
+        try:
+            # Look for row count indicator in popup (common patterns)
+            count_patterns = [
+                'text=/총\\s*\\d+\\s*건/',  # "총 123건"
+                'text=/\\d+\\s*건/',         # "123건"
+                '[class*="count"]',
+                '[class*="total"]'
+            ]
+            for pattern in count_patterns:
+                try:
+                    count_elem = page.locator(pattern).last
+                    if await count_elem.is_visible():
+                        count_text = await count_elem.text_content()
+                        logger.info(f'📊 Data count in popup: {count_text}')
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # 3. Right Click in the popup
         # We need to find an element inside the popup to right-click.
