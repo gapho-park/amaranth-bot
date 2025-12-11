@@ -361,21 +361,21 @@ async def download_excel_popup(page: Page) -> Optional[str]:
                     loading = page.locator(selector).first
                     if await loading.is_visible():
                         logger.info(f'  - Waiting for {selector} to disappear...')
-                        await loading.wait_for(state='hidden', timeout=30000)
+                        await loading.wait_for(state='hidden', timeout=60000)  # 60초로 증가
                 except Exception:
                     pass
         except Exception:
             pass
         
-        # Additional wait for network idle (increased timeout for schedule runs)
+        # Additional wait for network idle (increased timeout for GitHub Actions)
         try:
-            await page.wait_for_load_state('networkidle', timeout=30000)
+            await page.wait_for_load_state('networkidle', timeout=60000)  # 60초로 증가
             logger.info('  - Network idle detected')
         except Exception:
-            logger.warning('  - Network idle timeout (30s), continuing...')
+            logger.warning('  - Network idle timeout (60s), continuing...')
         
-        # Extra buffer time for rendering (increased for reliability)
-        await page.wait_for_timeout(5000)
+        # Extra buffer time for rendering (significantly increased for GitHub Actions)
+        await page.wait_for_timeout(10000)  # 10초로 증가
         logger.info('✅ Popup should be fully loaded')
         
         # Count actual rows in the grid for debugging
