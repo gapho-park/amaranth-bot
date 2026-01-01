@@ -9,7 +9,7 @@ async def set_application_date(page: Page) -> bool:
     """
     Step 1: Set Application Date Filter
     - Click date input field (Application Date)
-    - Enter 20250101 ~ 20251231
+    - Enter 20250101 ~ 20261231
     - Confirm with Enter
     """
     try:
@@ -52,16 +52,16 @@ async def set_application_date(page: Page) -> bool:
                 await end_input.press('Control+A')
             except Exception:
                 pass
-            await end_input.fill('20251231')
-            logger.info('✅ End date entered: 20251231')
+            await end_input.fill('20261231')
+            logger.info('✅ End date entered: 20261231')
         else:
             # If range is in one input
             try:
                 await start_input.press('Control+A')
             except Exception:
                 pass
-            await start_input.fill('20250101 ~ 20251231')
-            logger.info('✅ Date range entered: 20250101 ~ 20251231')
+            await start_input.fill('20250101 ~ 20261231')
+            logger.info('✅ Date range entered: 20250101 ~ 20261231')
 
         await page.wait_for_timeout(300)
 
