@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 # 기존 봇 로직 임포트
 from main import main as run_bot
+from data_collection_bot import main as run_data_collection_bot
 
 # 환경변수 로드
 load_dotenv()
@@ -98,6 +99,75 @@ async def handle_amaranth_shortcut(ack, shortcut, client):
             name="x",
             timestamp=thread_ts
         )
+
+
+@app.shortcut("run_bank_data_collection")
+async def handle_bank_data_collection_shortcut(ack, shortcut, client):
+    """
+    Global Shortcut 핸들러: 통장 자료수집
+    슬랙 앱 설정에서 Callback ID를 'run_bank_data_collection'으로 설정해야 합니다.
+    """
+    await ack()
+
+    user_id = shortcut["user"]["id"]
+    logger.info(f"🏦 Bank Data Collection shortcut triggered by {user_id}")
+
+    channel_id = os.environ.get("AMARANTH_SLACK_CHANNEL_ID")
+    if not channel_id:
+        logger.error("❌ AMARANTH_SLACK_CHANNEL_ID가 설정되지 않았습니다.")
+        dm_response = await client.conversations_open(users=user_id)
+        await client.chat_postMessage(
+            channel=dm_response["channel"]["id"],
+            text="❌ AMARANTH_SLACK_CHANNEL_ID 환경변수가 설정되지 않았습니다."
+        )
+        return
+
+    initial_msg = await client.chat_postMessage(
+        channel=channel_id,
+        text=f"🏦 <@{user_id}>님이 통장 자료수집을 시작했습니다!"
+    )
+    
+    thread_ts = initial_msg['ts']
+
+    try:
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="⏳ 통장 자료수집 봇이 작업을 수행 중입니다. (약 1~2분 소요 예상)"
+        )
+
+        logger.info("🤖 Running bank data collection bot...")
+        await run_data_collection_bot()
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="✅ *작업 완료!* 통장 자료수집이 완료되었습니다."
+        )
+        
+        await client.reactions_add(
+            channel=channel_id,
+            name="white_check_mark",
+            timestamp=thread_ts
+        )
+        logger.info("✅ Bank data collection completed successfully.")
+
+    except Exception as e:
+        error_msg = f"❌ 작업 중 오류가 발생했습니다:\n```{str(e)}```"
+        logger.error(f"Error during bank data collection: {e}")
+        
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=error_msg
+        )
+        
+        await client.reactions_add(
+            channel=channel_id,
+            name="x",
+            timestamp=thread_ts
+        )
+
 
 async def start_server():
     app_token = os.environ.get("AMARANTH_SLACK_APP_TOKEN")

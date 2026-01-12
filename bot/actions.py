@@ -5,6 +5,607 @@ from config import Config
 import os
 import datetime
 
+
+# =====================================================
+# 통장 자료수집 관련 함수들 (Data Collection Functions)
+# =====================================================
+
+async def dismiss_notice_popup(page: Page) -> bool:
+    """
+    공지 팝업창 닫기
+    
+    하루에 한번 뜨는 공지 팝업창을 처리:
+    1. "오늘 하루 그만 보기" 체크박스 클릭
+    2. "취소" 버튼 클릭
+    """
+    try:
+        logger.info('📢 Checking for notice popup...')
+        
+        await page.wait_for_timeout(1000)
+        
+        # 공지 팝업 확인 (여러 방법으로 시도)
+        popup_found = False
+        
+        # Method 1: "공지" 타이틀이 있는 팝업 확인
+        try:
+            notice_title = page.locator('text="공지"').first
+            if await notice_title.is_visible(timeout=2000):
+                popup_found = True
+                logger.info('✅ Notice popup detected')
+        except Exception:
+            pass
+        
+        # Method 2: "오늘 하루 그만 보기" 텍스트로 팝업 확인
+        if not popup_found:
+            try:
+                checkbox_text = page.locator('text="오늘 하루 그만 보기"').first
+                if await checkbox_text.is_visible(timeout=1000):
+                    popup_found = True
+                    logger.info('✅ Notice popup detected (via checkbox text)')
+            except Exception:
+                pass
+        
+        if not popup_found:
+            logger.info('ℹ️ No notice popup found, continuing...')
+            return True
+        
+        # Step 1: "오늘 하루 그만 보기" 체크박스 클릭
+        logger.info('☑️ Clicking "오늘 하루 그만 보기" checkbox...')
+        
+        checkbox_clicked = False
+        
+        try:
+            # 체크박스 또는 레이블 클릭
+            checkbox_selectors = [
+                'input[type="checkbox"]',
+                'text="오늘 하루 그만 보기"',
+                'label:has-text("오늘 하루 그만 보기")',
+                '[class*="checkbox"]:has-text("오늘 하루 그만 보기")',
+            ]
+            
+            for selector in checkbox_selectors:
+                try:
+                    checkbox = page.locator(selector).last  # 팝업 내 체크박스는 보통 마지막
+                    if await checkbox.is_visible(timeout=1000):
+                        await checkbox.click()
+                        logger.info(f'✅ Checkbox clicked ({selector})')
+                        checkbox_clicked = True
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f'Checkbox click attempt failed: {str(e)}')
+        
+        if not checkbox_clicked:
+            logger.warning('⚠️ Could not click checkbox, trying to close popup anyway...')
+        
+        await page.wait_for_timeout(300)
+        
+        # Step 2: "취소" 버튼 클릭
+        logger.info('🖱️ Clicking "취소" button...')
+        
+        cancel_clicked = False
+        
+        try:
+            cancel_selectors = [
+                'button:has-text("취소")',
+                'text="취소"',
+                '[class*="button"]:has-text("취소")',
+            ]
+            
+            for selector in cancel_selectors:
+                try:
+                    cancel_btn = page.locator(selector).last  # 팝업 내 버튼
+                    if await cancel_btn.is_visible(timeout=1000):
+                        await cancel_btn.click()
+                        logger.info(f'✅ Cancel button clicked ({selector})')
+                        cancel_clicked = True
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f'Cancel button click attempt failed: {str(e)}')
+        
+        # 취소 버튼 실패시 ESC 키로 닫기 시도
+        if not cancel_clicked:
+            try:
+                await page.keyboard.press('Escape')
+                logger.info('✅ Popup closed via ESC key')
+                cancel_clicked = True
+            except Exception:
+                pass
+        
+        if not cancel_clicked:
+            logger.warning('⚠️ Could not close notice popup')
+            return False
+        
+        await page.wait_for_timeout(500)
+        logger.info('✅ Notice popup dismissed')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ dismiss_notice_popup failed: {str(error)}')
+        return False
+
+
+async def click_data_collection_tab(page: Page) -> bool:
+    """
+    자료수집 탭 클릭
+    
+    메뉴에 진입하면 3가지 탭이 있음:
+    - 최근수집현황
+    - 자료수집 (클릭 대상)
+    - 오류현황
+    """
+    try:
+        logger.info('📑 Clicking 자료수집 tab...')
+        
+        await page.wait_for_timeout(1000)
+        
+        # 자료수집 탭 찾기 (여러 방법 시도)
+        tab_click_success = False
+        
+        # Method 1: 정확한 텍스트로 탭 찾기
+        try:
+            tab = page.get_by_text('자료수집', exact=True).first
+            if await tab.is_visible(timeout=3000):
+                await tab.click()
+                logger.info('✅ 자료수집 tab clicked (Method 1: exact text)')
+                tab_click_success = True
+        except Exception as e:
+            logger.debug(f'Method 1 failed: {str(e)}')
+        
+        # Method 2: 탭 컨테이너 내에서 찾기
+        if not tab_click_success:
+            try:
+                # 탭 영역에서 자료수집 찾기
+                tab_selectors = [
+                    '[class*="tab"] :text-is("자료수집")',
+                    '[role="tab"]:has-text("자료수집")',
+                    'button:has-text("자료수집")',
+                    'a:has-text("자료수집")',
+                ]
+                
+                for selector in tab_selectors:
+                    try:
+                        tab = page.locator(selector).first
+                        if await tab.is_visible(timeout=1000):
+                            await tab.click()
+                            logger.info(f'✅ 자료수집 tab clicked (Method 2: {selector})')
+                            tab_click_success = True
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f'Method 2 failed: {str(e)}')
+        
+        # Method 3: 모든 자료수집 텍스트 중 클릭 가능한 것 찾기
+        if not tab_click_success:
+            try:
+                all_tabs = page.locator('text="자료수집"')
+                count = await all_tabs.count()
+                logger.debug(f'Found {count} "자료수집" elements')
+                
+                for i in range(count):
+                    try:
+                        el = all_tabs.nth(i)
+                        if await el.is_visible():
+                            await el.click()
+                            logger.info(f'✅ 자료수집 tab clicked (Method 3: index {i})')
+                            tab_click_success = True
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f'Method 3 failed: {str(e)}')
+        
+        if not tab_click_success:
+            raise Exception('Could not find 자료수집 tab')
+        
+        # 탭 전환 후 대기
+        await page.wait_for_timeout(1000)
+        logger.info('✅ 자료수집 tab activated')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ click_data_collection_tab failed: {str(error)}')
+        return False
+
+
+async def select_bankbook_filter(page: Page) -> bool:
+    """
+    증빙구분 토글에서 '통장' 선택
+    
+    간단한 키보드 조작:
+    1. 증빙구분 토글창 클릭 (열기)
+    2. 방향키 아래 한 번 (통장 선택)
+    3. 엔터 (확정)
+    """
+    try:
+        logger.info('🏦 Selecting 통장 filter in 증빙구분...')
+        
+        await page.wait_for_timeout(500)
+        
+        # Step 1: 증빙구분 토글창 클릭 (열기)
+        logger.info('🔽 Opening 증빙구분 dropdown...')
+        
+        label = page.locator('text="증빙구분"').first
+        if await label.is_visible(timeout=3000):
+            box = await label.bounding_box()
+            if box:
+                # 레이블 오른쪽 80px 지점 클릭 (드롭다운 위치)
+                target_x = box['x'] + box['width'] + 80
+                target_y = box['y'] + (box['height'] / 2)
+                await page.mouse.click(target_x, target_y)
+                logger.info(f'✅ 증빙구분 dropdown clicked at ({target_x:.0f}, {target_y:.0f})')
+        else:
+            raise Exception('Could not find 증빙구분 label')
+        
+        await page.wait_for_timeout(300)
+        
+        # Step 2: 방향키 아래로 한 번 (전체 → 통장)
+        logger.info('⬇️ Arrow Down to select 통장...')
+        await page.keyboard.press('ArrowDown')
+        await page.wait_for_timeout(200)
+        
+        # Step 3: 엔터로 확정
+        logger.info('↩️ Enter to confirm...')
+        await page.keyboard.press('Enter')
+        await page.wait_for_timeout(300)
+        
+        # Step 4: 추가 옵션 확인 엔터
+        logger.info('↩️ Enter again for additional option...')
+        await page.keyboard.press('Enter')
+        logger.info('✅ 통장 selected')
+        
+        # Step 4: 로딩 대기 (10초)
+        logger.info('⏳ Waiting for data load (10 seconds)...')
+        await page.wait_for_timeout(10000)
+        
+        # 네트워크 안정화 대기
+        try:
+            await page.wait_for_load_state('networkidle', timeout=15000)
+            logger.info('✅ Network idle detected')
+        except Exception:
+            logger.warning('⚠️ Network idle timeout, continuing...')
+        
+        logger.info('✅ 통장 filter selected and data loaded')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ select_bankbook_filter failed: {str(error)}')
+        return False
+
+
+async def click_batch_date_apply_button(page: Page) -> bool:
+    """
+    수집일 일괄적용 버튼 클릭
+    
+    우측상단에 있는 "수집일 일괄적용" 버튼을 클릭
+    확인 팝업이 뜨면 확인 누르기
+    """
+    try:
+        logger.info('📅 Clicking 수집일 일괄적용 button...')
+        
+        await page.wait_for_timeout(500)
+        
+        # Step 1: 수집일 일괄적용 버튼 찾아서 클릭
+        button_click_success = False
+        
+        try:
+            button_selectors = [
+                'button:has-text("수집일 일괄적용")',
+                'text="수집일 일괄적용"',
+                '[class*="button"]:has-text("수집일 일괄적용")',
+            ]
+            
+            for selector in button_selectors:
+                try:
+                    button = page.locator(selector).first
+                    if await button.is_visible(timeout=3000):
+                        await button.click()
+                        logger.info(f'✅ 수집일 일괄적용 button clicked ({selector})')
+                        button_click_success = True
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f'Button click failed: {str(e)}')
+        
+        if not button_click_success:
+            raise Exception('Could not find 수집일 일괄적용 button')
+        
+        # Step 2: 확인 팝업 대기 및 클릭
+        logger.info('⏳ Waiting for confirmation popup...')
+        await page.wait_for_timeout(1000)
+        
+        # 확인 버튼 찾아서 클릭
+        try:
+            confirm_btn = page.locator('button:has-text("확인")').last
+            if await confirm_btn.is_visible(timeout=3000):
+                await confirm_btn.click()
+                logger.info('✅ Confirmation popup - 확인 clicked')
+            else:
+                logger.info('ℹ️ No confirmation popup appeared, continuing...')
+        except Exception as e:
+            logger.debug(f'Confirmation popup handling: {str(e)}')
+        
+        await page.wait_for_timeout(500)
+        logger.info('✅ 수집일 일괄적용 button process completed')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ click_batch_date_apply_button failed: {str(error)}')
+        return False
+
+
+async def fill_collection_dates(page: Page, start_date: str, end_date: str) -> bool:
+    """
+    수집시작일/종료일 입력 후 적용 버튼 클릭
+    
+    Args:
+        start_date: 수집시작일 (형식: YYYYMMDD, 예: 20260112)
+        end_date: 수집종료일 (형식: YYYYMMDD, 예: 20260112)
+    """
+    try:
+        logger.info(f'📅 Filling collection dates: {start_date} ~ {end_date}...')
+        
+        await page.wait_for_timeout(1000)
+        
+        # Step 1: 수집시작일 입력
+        logger.info('📝 Entering 수집시작일...')
+        
+        start_date_success = False
+        
+        # Method 1: 수집시작일 레이블 근처의 입력 필드 찾기
+        try:
+            # 수집시작일 입력 필드 찾기 (여러 방법)
+            start_input_selectors = [
+                'text="수집시작일" >> .. >> input',
+                '[class*="DatePicker"] input',
+                'input[class*="date"]',
+                'input[type="text"]',
+            ]
+            
+            # 먼저 수집시작일 레이블 찾기
+            start_label = page.locator('text="수집시작일"').first
+            if await start_label.is_visible(timeout=3000):
+                # 레이블의 부모/형제 요소에서 input 찾기
+                parent = start_label.locator('xpath=ancestor::*[1]/following-sibling::*[1]//input').first
+                if not await parent.is_visible(timeout=1000):
+                    parent = start_label.locator('xpath=../following-sibling::*//input').first
+                if not await parent.is_visible(timeout=1000):
+                    parent = start_label.locator('xpath=../..//input').first
+                
+                if await parent.is_visible(timeout=1000):
+                    await parent.click()
+                    await page.wait_for_timeout(200)
+                    await parent.press('Control+A')
+                    await parent.fill(start_date)
+                    logger.info(f'✅ 수집시작일 entered: {start_date}')
+                    start_date_success = True
+        except Exception as e:
+            logger.debug(f'Method 1 for start date failed: {str(e)}')
+        
+        # Method 2: 팝업 내 첫 번째 날짜 입력 필드
+        if not start_date_success:
+            try:
+                # 팝업/다이얼로그 내 날짜 입력 필드 찾기
+                date_inputs = page.locator('[class*="Dialog"] input, [class*="Popup"] input, [class*="Modal"] input, [role="dialog"] input')
+                count = await date_inputs.count()
+                logger.debug(f'Found {count} date input fields in popup')
+                
+                if count >= 1:
+                    first_input = date_inputs.nth(0)
+                    await first_input.click()
+                    await page.wait_for_timeout(200)
+                    await first_input.press('Control+A')
+                    await first_input.fill(start_date)
+                    logger.info(f'✅ 수집시작일 entered (Method 2): {start_date}')
+                    start_date_success = True
+            except Exception as e:
+                logger.debug(f'Method 2 for start date failed: {str(e)}')
+        
+        # Method 3: 날짜 형식 input 필드 찾기
+        if not start_date_success:
+            try:
+                date_inputs = page.locator('input[class*="YMD"], input[class*="date"], input[placeholder*="날짜"]')
+                count = await date_inputs.count()
+                logger.debug(f'Found {count} date-like input fields')
+                
+                if count >= 1:
+                    first_input = date_inputs.nth(0)
+                    await first_input.click()
+                    await page.wait_for_timeout(200)
+                    await first_input.press('Control+A')
+                    await first_input.fill(start_date)
+                    logger.info(f'✅ 수집시작일 entered (Method 3): {start_date}')
+                    start_date_success = True
+            except Exception as e:
+                logger.debug(f'Method 3 for start date failed: {str(e)}')
+        
+        if not start_date_success:
+            raise Exception('Could not find 수집시작일 input field')
+        
+        await page.wait_for_timeout(300)
+        
+        # Step 2: 수집종료일 입력
+        logger.info('📝 Entering 수집종료일...')
+        
+        end_date_success = False
+        
+        # Method 1: 수집종료일 레이블 근처의 입력 필드 찾기
+        try:
+            end_label = page.locator('text="수집종료일"').first
+            if await end_label.is_visible(timeout=3000):
+                parent = end_label.locator('xpath=ancestor::*[1]/following-sibling::*[1]//input').first
+                if not await parent.is_visible(timeout=1000):
+                    parent = end_label.locator('xpath=../following-sibling::*//input').first
+                if not await parent.is_visible(timeout=1000):
+                    parent = end_label.locator('xpath=../..//input').first
+                
+                if await parent.is_visible(timeout=1000):
+                    await parent.click()
+                    await page.wait_for_timeout(200)
+                    await parent.press('Control+A')
+                    await parent.fill(end_date)
+                    logger.info(f'✅ 수집종료일 entered: {end_date}')
+                    end_date_success = True
+        except Exception as e:
+            logger.debug(f'Method 1 for end date failed: {str(e)}')
+        
+        # Method 2: 팝업 내 두 번째 날짜 입력 필드
+        if not end_date_success:
+            try:
+                date_inputs = page.locator('[class*="Dialog"] input, [class*="Popup"] input, [class*="Modal"] input, [role="dialog"] input')
+                count = await date_inputs.count()
+                
+                if count >= 2:
+                    second_input = date_inputs.nth(1)
+                    await second_input.click()
+                    await page.wait_for_timeout(200)
+                    await second_input.press('Control+A')
+                    await second_input.fill(end_date)
+                    logger.info(f'✅ 수집종료일 entered (Method 2): {end_date}')
+                    end_date_success = True
+            except Exception as e:
+                logger.debug(f'Method 2 for end date failed: {str(e)}')
+        
+        # Method 3: 날짜 형식 input 필드 두 번째 것
+        if not end_date_success:
+            try:
+                date_inputs = page.locator('input[class*="YMD"], input[class*="date"], input[placeholder*="날짜"]')
+                count = await date_inputs.count()
+                
+                if count >= 2:
+                    second_input = date_inputs.nth(1)
+                    await second_input.click()
+                    await page.wait_for_timeout(200)
+                    await second_input.press('Control+A')
+                    await second_input.fill(end_date)
+                    logger.info(f'✅ 수집종료일 entered (Method 3): {end_date}')
+                    end_date_success = True
+            except Exception as e:
+                logger.debug(f'Method 3 for end date failed: {str(e)}')
+        
+        if not end_date_success:
+            raise Exception('Could not find 수집종료일 input field')
+        
+        await page.wait_for_timeout(300)
+        
+        # Step 3: 적용 버튼 클릭
+        logger.info('🖱️ Clicking 적용 button...')
+        
+        apply_success = False
+        
+        try:
+            apply_selectors = [
+                'button:has-text("적용")',
+                'text="적용"',
+                '[class*="button"]:has-text("적용")',
+            ]
+            
+            for selector in apply_selectors:
+                try:
+                    apply_btn = page.locator(selector).last
+                    if await apply_btn.is_visible(timeout=2000):
+                        await apply_btn.click()
+                        logger.info(f'✅ 적용 button clicked ({selector})')
+                        apply_success = True
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f'Apply button click failed: {str(e)}')
+        
+        if not apply_success:
+            raise Exception('Could not find 적용 button')
+        
+        # 적용 후 처리 대기
+        await page.wait_for_timeout(2000)
+        
+        try:
+            await page.wait_for_load_state('networkidle', timeout=10000)
+        except Exception:
+            logger.warning('⚠️ Network idle timeout after apply')
+        
+        logger.info('✅ Collection dates filled and applied successfully')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ fill_collection_dates failed: {str(error)}')
+        return False
+
+
+async def click_data_collection_and_auto_journalize(page: Page) -> bool:
+    """
+    자료수집 및 자동분개 버튼 클릭 (선택사항)
+    
+    수집일 적용 후 실제 자료수집을 실행하려면 이 버튼을 클릭
+    """
+    try:
+        logger.info('📊 Clicking 자료수집 및 자동분개 button...')
+        
+        await page.wait_for_timeout(500)
+        
+        button_click_success = False
+        
+        try:
+            button_selectors = [
+                'button:has-text("자료수집 및 자동분개")',
+                'text="자료수집 및 자동분개"',
+                '[class*="button"]:has-text("자료수집 및 자동분개")',
+            ]
+            
+            for selector in button_selectors:
+                try:
+                    button = page.locator(selector).first
+                    if await button.is_visible(timeout=3000):
+                        await button.click()
+                        logger.info(f'✅ 자료수집 및 자동분개 button clicked ({selector})')
+                        button_click_success = True
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f'Button click failed: {str(e)}')
+        
+        if not button_click_success:
+            raise Exception('Could not find 자료수집 및 자동분개 button')
+        
+        # 팝업창 확인 버튼 클릭
+        logger.info('⏳ Waiting for confirmation popup...')
+        await page.wait_for_timeout(1000)
+        
+        try:
+            confirm_btn = page.locator('button:has-text("확인")').last
+            if await confirm_btn.is_visible(timeout=3000):
+                await confirm_btn.click()
+                logger.info('✅ Confirmation popup - 확인 clicked')
+        except Exception as e:
+            logger.debug(f'Confirmation popup handling: {str(e)}')
+        
+        # 처리 완료 대기 (자료수집은 시간이 걸릴 수 있음)
+        logger.info('⏳ Waiting for data collection process...')
+        await page.wait_for_timeout(5000)
+        
+        try:
+            await page.wait_for_load_state('networkidle', timeout=60000)
+        except Exception:
+            logger.warning('⚠️ Network idle timeout during data collection')
+        
+        logger.info('✅ 자료수집 및 자동분개 process completed')
+        return True
+        
+    except Exception as error:
+        logger.error(f'❌ click_data_collection_and_auto_journalize failed: {str(error)}')
+        return False
+
+
+# =====================================================
+# 지출결의현황 관련 함수들 (Expenditure Resolution Functions)
+# =====================================================
+
 async def set_application_date(page: Page) -> bool:
     """
     Step 1: Set Application Date Filter
@@ -357,52 +958,33 @@ async def download_excel_popup(page: Page) -> Optional[str]:
         await page.wait_for_timeout(3000)
         logger.info('✅ Popup should be fully loaded')
         
-        # ===== CRITICAL FIX: Load ALL data in virtual grid using Ctrl+End =====
-        # Amaranth popup uses lazy loading - only visible rows are loaded initially
-        # Ctrl+End jumps to last row and forces all data to load
+        # ===== Load ALL data in virtual grid using Ctrl+End =====
+        # Amaranth popup uses lazy loading - Ctrl+End jumps to last row and forces all data to load
         logger.info('📜 Loading all data in popup grid (Ctrl+End)...')
         
         try:
-            # IMPORTANT: Must click INSIDE the grid to give it focus
-            # Try multiple selectors to find the grid inside the popup
-            grid_selectors = [
-                'tbody tr td',           # Table cell (most reliable for focus)
-                '.OBTDataGrid tbody',    # Amaranth grid body
-                '[class*="DataGrid"] tbody',
-                '[class*="Grid"] tbody',
-                'table tbody',
-                '.grid-container',
-            ]
+            # Click inside the popup to give it focus, then press Ctrl+End
+            # Find popup title and click below it (inside grid area)
+            popup_title = page.locator('text="상하단 데이터 전체조회"').last
+            if await popup_title.is_visible():
+                box = await popup_title.bounding_box()
+                if box:
+                    # Click inside the grid area (below the title)
+                    target_x = box['x'] + 300
+                    target_y = box['y'] + 150
+                    await page.mouse.click(target_x, target_y)
+                    logger.info(f'  - Clicked inside popup grid at ({target_x:.0f}, {target_y:.0f})')
             
-            grid_clicked = False
-            for selector in grid_selectors:
-                try:
-                    grid_elem = page.locator(selector).first
-                    if await grid_elem.is_visible(timeout=1000):
-                        # Click the grid element to give it focus
-                        await grid_elem.click()
-                        grid_clicked = True
-                        logger.info(f'  - Grid clicked for focus: {selector}')
-                        break
-                except Exception:
-                    continue
-            
-            if not grid_clicked:
-                # Fallback: click in popup center area
-                logger.warning('  - Grid not found, clicking popup center as fallback')
-                vp = page.viewport_size
-                await page.mouse.click(vp['width'] * 0.5, vp['height'] * 0.5)
-            
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(300)
             
             # Ctrl+End: Jump to last row (triggers full data load)
             await page.keyboard.press('Control+End')
             logger.info('  - Ctrl+End pressed (jump to last row)')
-            await page.wait_for_timeout(3000)  # Increased wait for data load
             
             # Wait for data to load
+            await page.wait_for_timeout(2000)
             try:
-                await page.wait_for_load_state('networkidle', timeout=15000)
+                await page.wait_for_load_state('networkidle', timeout=10000)
                 logger.info('  - Network idle after Ctrl+End')
             except Exception:
                 pass
